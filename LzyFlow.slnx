@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LzyFlow.Application/LzyFlow.Application.csproj" />
+    <Project Path="src/LzyFlow.Cli/LzyFlow.Cli.csproj" />
+    <Project Path="src/LzyFlow.Core/LzyFlow.Core.csproj" />
+    <Project Path="src/LzyFlow.Daemon/LzyFlow.Daemon.csproj" />
+    <Project Path="src/LzyFlow.Infrastructure/LzyFlow.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LzyFlow.Core.Tests/LzyFlow.Core.Tests.csproj" />
+    <Project Path="tests/LzyFlow.IntegrationTests/LzyFlow.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
