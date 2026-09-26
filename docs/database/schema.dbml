@@ -1,0 +1,126 @@
+Enum file_status {
+  detected
+  waiting_for_stability
+  stalled
+  ready
+  classifying
+  needs_review
+  approved
+  moving
+  completed
+  failed
+  ignored
+}
+
+Enum classification_stage {
+  lightweight
+  semantic
+}
+
+Enum classification_status {
+  accepted
+  escalated
+  needs_review
+}
+
+Enum classification_target {
+  category_root
+  existing_folder
+  new_folder
+}
+
+Enum operation_status {
+  completed
+  failed
+}
+
+Table categories {
+  id integer [pk, increment]
+  key text [not null, unique]
+}
+
+Table directories {
+  id integer [pk, increment]
+
+  category_id integer
+  path text [not null]
+
+  is_deleted boolean [not null, default: false]
+  deleted_at datetime
+
+  indexes {
+    category_id
+    is_deleted
+  }
+}
+
+Table files {
+  id integer [pk, increment]
+
+  file_name text [not null]
+  directory_id integer [not null]
+
+  status file_status [not null]
+
+  source_url text
+  referrer_url text
+
+  detected_at datetime [not null]
+  updated_at datetime [not null]
+
+  indexes {
+    directory_id
+    status
+  }
+}
+
+Table classifications {
+  id integer [pk, increment]
+
+  file_id integer [not null]
+  category_id integer
+
+  stage classification_stage [not null]
+  status classification_status [not null]
+
+  target classification_target
+
+  suggested_directory_id integer
+  suggested_folder_name text
+
+  confidence real
+
+  indexes {
+    file_id
+  }
+}
+
+Table file_operations {
+  id integer [pk, increment]
+
+  file_id integer [not null]
+
+  source_path text [not null]
+  destination_path text [not null]
+
+  status operation_status [not null]
+  error_message text
+
+  created_at datetime [not null]
+  finished_at datetime
+
+  indexes {
+    file_id
+    status
+  }
+}
+
+Ref: directories.category_id > categories.id
+
+Ref: files.directory_id > directories.id
+
+Ref: classifications.file_id > files.id
+Ref: classifications.category_id > categories.id
+Ref: classifications.suggested_directory_id > directories.id
+
+Ref: file_operations.file_id > files.id
