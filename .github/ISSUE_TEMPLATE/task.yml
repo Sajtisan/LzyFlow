@@ -1,0 +1,91 @@
+name: Implementation task
+description: Track a concrete piece of planned engineering work
+title: "[Task]: "
+labels:
+  - "type:task"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for planned implementation work derived from the V1 design or roadmap.
+
+        Tasks should describe a meaningful capability or outcome, not an individual class or method.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this task is complete?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core
+        - Daemon
+        - Filesystem
+        - Classification
+        - Database
+        - Configuration
+        - REST API
+        - CLI / TUI
+        - Security
+        - Linux integration
+        - Testing / CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: List the behaviors or constraints that this implementation must satisfy.
+      placeholder: |
+        - Requirement 1
+        - Requirement 2
+        - Requirement 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define observable conditions for considering the task complete.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing notes
+      description: What should be tested? Include important failure or safety cases.
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: Design references
+      description: Link relevant technical-design sections, related issues, or ADRs.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: definition
+    attributes:
+      label: Definition of done
+      options:
+        - label: Tests are added or updated where appropriate.
+          required: true
+        - label: Documentation is updated where the public or developer-facing contract changes.
+          required: true

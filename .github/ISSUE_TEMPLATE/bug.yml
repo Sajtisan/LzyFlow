@@ -1,0 +1,116 @@
+name: Bug report
+description: Report a reproducible problem in LzyFlow
+title: "[Bug]: "
+labels:
+  - "type:bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug.
+
+        LzyFlow V1 targets Linux only. Please include enough information to reproduce the issue safely.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: Briefly describe the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Configure ...
+        2. Place ...
+        3. Run ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should LzyFlow have done?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What did LzyFlow do instead?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: LzyFlow version
+      description: Release, commit, or branch where the issue occurs.
+      placeholder: "e.g. v0.2.0, main @ abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Linux distribution
+      placeholder: "e.g. Arch Linux, Fedora, Ubuntu"
+    validations:
+      required: true
+
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel
+      description: Output of `uname -r`, if relevant.
+      placeholder: "e.g. 6.x.x-arch1-1"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste only the relevant excerpt. For the user service, logs may be available with:
+        `journalctl --user -u lzyflow`
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: |
+        Include only the configuration needed to reproduce the issue.
+        Remove secrets or sensitive paths before posting.
+      render: toml
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, filesystem layout, destination state, or anything else that may help.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets, tokens, and sensitive personal paths from this report.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

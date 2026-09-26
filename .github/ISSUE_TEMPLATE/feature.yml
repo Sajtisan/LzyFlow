@@ -1,0 +1,87 @@
+name: Feature request
+description: Propose a new capability or improvement for LzyFlow
+title: "[Feature]: "
+labels:
+  - "type:feature"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        LzyFlow V1 is intentionally scoped and conservative.
+
+        Please describe the problem first, then the behavior you would like to see.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What limitation, workflow problem, or user need does this address?
+      placeholder: Describe the problem without assuming a specific implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should LzyFlow do?
+      placeholder: Describe the expected user-visible behavior.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of LzyFlow is primarily affected?
+      options:
+        - Core
+        - Daemon
+        - Filesystem
+        - Classification
+        - Database
+        - Configuration
+        - REST API
+        - CLI / TUI
+        - Security
+        - Linux integration
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Example use case
+      description: Show a concrete situation where this would be useful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Are there simpler approaches or existing LzyFlow capabilities that partially solve this?
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope considerations
+      description: |
+        Does this affect the Linux-only V1 scope, safety model, configuration format,
+        filesystem authorization, classifier contract, or another settled design boundary?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
+        - label: This request describes a user or engineering need rather than only an implementation preference.
+          required: true

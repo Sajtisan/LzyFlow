@@ -1,0 +1,62 @@
+name: Documentation
+description: Report missing, unclear, or incorrect LzyFlow documentation
+title: "[Docs]: "
+labels:
+  - "type:docs"
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Documentation area
+      options:
+        - README
+        - Configuration
+        - Security
+        - Technical design
+        - Development setup
+        - API documentation
+        - Troubleshooting
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: File, section, page, or link affected by this issue.
+      placeholder: "e.g. docs/configuration.md — Hot Reload"
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is missing, inaccurate, confusing, or outdated?
+    validations:
+      required: true
+
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Suggested improvement
+      description: What should the documentation explain or change?
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Related implementation, issue, PR, or design context.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the existing documentation for this information.
+          required: true
