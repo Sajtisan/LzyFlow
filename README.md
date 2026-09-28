@@ -133,4 +133,4 @@ The technical design is the canonical reference for V1 architecture, lifecycle, 
 
 ## License
 
-A license has not yet been selected.
+Licensed under the [Apache License 2.0](LICENSE).
