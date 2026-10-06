@@ -2,9 +2,9 @@
 
 **LzyFlow** is a local-first Linux file organizer that automatically keeps configurable directories clean, while preferring no action over an unsafe or uncertain filesystem change.
 
-> **Status:** V1 design is finalized. Linux-only implementation is in active development.
+> **Status:** Product V1 architecture is defined. The bounded BSc research profile is in active development.
 
-## Features
+## Product V1 features
 
 - Watch one or more configurable directories
 - Route files using deterministic rules
@@ -38,6 +38,22 @@ lzyflow (CLI / TUI)
 
 `lzyflowd` is the standalone authority for runtime state and filesystem mutations.  
 The CLI and TUI are thin clients over the same application operations.
+
+## BSc research profile
+
+The repository distinguishes the complete Product V1 architecture from the smaller BSc research profile currently used for implementation and evaluation.
+
+The research profile focuses on:
+
+- deterministic and local semantic document classification;
+- confidence-based rejection and manual review;
+- risk-coverage calibration;
+- safe filesystem operations and recovery;
+- reproducible offline evaluation and error analysis.
+
+Product features such as multiple clients, complete service distribution, notifications, and broader platform integration remain on the V1 roadmap but do not block the research profile.
+
+See [V1 Technical Design](docs/technical-design.md#23-product-v1-and-bsc-research-profile) for the normative scope and completion criteria.
 
 ## Platform
 
@@ -108,11 +124,20 @@ Configuration is validated atomically. Invalid changes are rejected and the last
 
 - [V1 Technical Design](docs/technical-design.md)
 
-The technical design is the canonical reference for V1 architecture, lifecycle, persistence, security, recovery, API boundaries, and implementation constraints.
+The technical design is the canonical reference for Product V1 architecture, lifecycle, persistence, security, recovery, API boundaries, the BSc research profile, and its evaluation contract.
 
 ## Roadmap
 
-**V1**
+**BSc research profile**
+
+- one watched directory and fixed destination taxonomy
+- deterministic and local semantic classification
+- confidence-based rejection and manual review
+- safe moves, recovery, history, and undo
+- offline evaluation runner and error analysis
+- automated safety and recovery tests
+
+**Product V1**
 
 - Linux daemon
 - CLI and TUI
@@ -133,4 +158,4 @@ The technical design is the canonical reference for V1 architecture, lifecycle, 
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+A license has not yet been selected.
