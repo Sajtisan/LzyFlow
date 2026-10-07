@@ -158,4 +158,4 @@ The technical design is the canonical reference for Product V1 architecture, lif
 
 ## License
 
-A license has not yet been selected.
+Licensed under the [Apache License 2.0](LICENSE).
