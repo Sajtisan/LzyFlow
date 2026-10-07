@@ -123,6 +123,9 @@ Configuration is validated atomically. Invalid changes are rejected and the last
 ## Documentation
 
 - [V1 Technical Design](docs/technical-design.md)
+- [Configuration](docs/configuration.md)
+- [Security](docs/security.md)
+- [Development](docs/development.md)
 
 The technical design is the canonical reference for Product V1 architecture, lifecycle, persistence, security, recovery, API boundaries, the BSc research profile, and its evaluation contract.
 
