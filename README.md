@@ -88,12 +88,25 @@ Release installation instructions will be added with the first usable build.
 
 ## Development
 
-Once the solution is bootstrapped:
+LzyFlow requires the **.NET 10 SDK**.
+
+From the repository root:
 
 ```bash
-dotnet restore
-dotnet build
+dotnet restore LzyFlow.slnx
+dotnet build LzyFlow.slnx
+dotnet test LzyFlow.slnx
 ```
+
+Before opening a pull request, verify formatting as well:
+
+```bash
+dotnet format LzyFlow.slnx --verify-no-changes
+```
+
+GitHub Actions runs formatting verification, a Release build, and the complete test suite for pull requests and pushes to `main`.
+
+See [Development](docs/development.md) for the test structure, isolation rules, temporary filesystem and SQLite fixtures, and CI workflow.
 
 Development builds may be run with standard `dotnet run` workflows from the relevant project.
 
