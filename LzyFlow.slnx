@@ -7,6 +7,7 @@
     <Project Path="src/LzyFlow.Infrastructure/LzyFlow.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/LzyFlow.Application.Tests/LzyFlow.Application.Tests.csproj" />
     <Project Path="tests/LzyFlow.Core.Tests/LzyFlow.Core.Tests.csproj" />
     <Project Path="tests/LzyFlow.Infrastructure.Tests/LzyFlow.Infrastructure.Tests.csproj" />
     <Project Path="tests/LzyFlow.IntegrationTests/LzyFlow.IntegrationTests.csproj" />
