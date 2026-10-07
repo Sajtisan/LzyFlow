@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/LzyFlow.Core.Tests/LzyFlow.Core.Tests.csproj" />
+    <Project Path="tests/LzyFlow.Infrastructure.Tests/LzyFlow.Infrastructure.Tests.csproj" />
     <Project Path="tests/LzyFlow.IntegrationTests/LzyFlow.IntegrationTests.csproj" />
   </Folder>
 </Solution>
