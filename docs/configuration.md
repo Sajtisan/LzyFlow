@@ -1,25 +1,61 @@
 # Configuration
 
-LzyFlow uses **TOML** as the source of user configuration.
+LzyFlow uses TOML for user intent. This document follows technical-design **Revision 8** and the requirements review. It describes intended behavior; new fields and setup flows are not implemented by this documentation change.
 
-The default configuration file is:
+The default location is:
 
 ```text
 ~/.config/lzyflow/config.toml
 ```
 
-Initial Linux setup should resolve the user's XDG Downloads directory when possible instead of assuming `~/Downloads`.
+Setup resolves Downloads through XDG where possible rather than assuming the literal path `~/Downloads`.
 
-## Principles
+## Initial setup
 
-- Configuration expresses user intent.
-- Stable category, watch, and rule identifiers should not change when labels or paths change.
-- Configuration updates are validated atomically.
-- Invalid changes are rejected entirely.
-- The daemon continues using the last-known-good configuration after a failed reload.
-- SQLite does not duplicate configuration that belongs in TOML.
+Both TUI and CLI setup are required. Interactive setup asks for supported user-facing choices. The CLI also supports fully noninteractive setup and operation so an integrating application can supply those choices without prompts.
 
-## Reference
+Setup collects watched directories, categories, destinations, routing rules, one global mode, per-destination existing-file choices, and applicable supported notification/API/policy preferences.
+
+Suggested values may be offered. Examples must not silently decide mode or adopt files. Asking about configuration does not mean asking users to select model dimensions, database internals, or unfinished features.
+
+Exact command grammar, output schemas, and exit codes remain open. Noninteractive setup must report missing required choices without blocking for terminal input.
+
+## Organization mode
+
+| Value | Meaning |
+| --- | --- |
+| `static` | Use the category root and suitable existing folders; no classifier-driven creation. |
+| `dynamic` | Also create useful nested groups and subdivide them adaptively when confident. |
+
+The initial mode is global and selected during setup. No automatic mode default has been agreed. Per-destination overrides are a later optional feature.
+
+Dynamic mode includes confident automatic creation. It does not require a blanket `new_folder_policy = "review"` switch. Uncertain decisions require review; optional rename/merge suggestions always require approval.
+
+## Temporary downloads and grace period
+
+A download receives **60 seconds after completion** before organization. Initial detection of an incomplete file does not start that period. Completion/stability detection and grace expiry are separate eligibility checks.
+
+The user can move temporary files into:
+
+```text
+<XDG Downloads>/to-be-deleted
+```
+
+This folder is excluded from organization. Pending work rechecks location and eligibility so a manual move there cancels organization. No automatic deletion is implied, including when other cleanup policies exist.
+
+The agreed duration is one minute. Whether it is configurable, how setup creates/adopts this folder, behavior when a file moves back out, and corresponding behavior for other watches remain open. This revision does not invent keys for those unresolved choices.
+
+## Destinations and pre-existing files
+
+Each destination gets a separate setup choice: include its pre-existing files, or manage only files LzyFlow places or the user explicitly includes.
+
+Configuring a path alone does not adopt existing contents. A shared destination used by multiple rules must have one unambiguous effective adoption choice.
+
+Fine-grained exclusions, later changes, and initial scanning remain open. Adoption permits organization within the selected scope; it does not grant automatic cleanup or unrestricted rename/merge authority.
+
+## Proposed configuration representation
+
+The following is a coherent **illustrative schema**, not a frozen parser API. Existing general/classification/rule fields are retained where possible. `destinations` records illustrate how independent adoption choices could be stored while rules still name destination paths.
 
 ### General
 
@@ -30,149 +66,57 @@ stable_checks_required = 3
 stalled_after_seconds = 600
 ```
 
-| Option | Description |
-| --- | --- |
-| `poll_interval_seconds` | Delay between file-stability checks. Must be greater than `0`. |
-| `stable_checks_required` | Consecutive unchanged checks required before a file may be considered stable. Must be at least `1`. |
-| `stalled_after_seconds` | Time without useful progress before a file is marked stalled. Stalling never authorizes a move. |
+These earlier parameters control stability observation. They do not replace the separate post-completion grace period. Poll interval must be positive; required checks must be at least one. Stalling never authorizes a move.
 
 ### Classification
 
 ```toml
 [classification]
+mode = "dynamic"
 lightweight_threshold = 0.75
 semantic_threshold = 0.80
+minimum_candidate_margin = 0.05
+threshold_profile = "example-unvalidated"
 ```
 
-| Option | Description |
-| --- | --- |
-| `lightweight_threshold` | Minimum confidence required to accept a lightweight classification result. |
-| `semantic_threshold` | Minimum confidence required to accept a semantic classification result. |
+`dynamic` is an example user's explicit choice, not a default. Numeric acceptance values are inherited provisional examples. A bounded score is not automatically a probability. `threshold_profile` identifies a versioned compatible policy; the example profile does not certify autonomous correctness.
 
-Both values must be between `0.0` and `1.0`.
+Creation needs evidence of a useful coherent group, recognizable naming, a suitable parent, and acceptable uncertainty. Exact group/split criteria, limits, and action thresholds remain open. There is no universal minimum-file-count gate.
 
-A stricter threshold for automatic new-folder creation is planned, but its exact V1 value is intentionally not part of the configuration contract yet.
+The margin applies in the profile's declared score space. A bounded margin must not be applied directly to arbitrary unbounded logits. See [AI Research Plan](ai-research.md).
 
-### Notifications
+### Per-destination choices
 
 ```toml
-[notifications]
-enabled = true
-mode = "immediate"
+[[destinations]]
+key = "documents-root"
+path = "~/Documents"
+include_existing_files = true
+
+[[destinations]]
+key = "pictures-root"
+path = "~/Pictures"
+include_existing_files = false
 ```
 
-V1 supports immediate native Linux notifications.
+The booleans illustrate independent user answers. Neither is a default. Field names, identity handling, and migration are implementation proposals; the separate choices are required behavior.
 
-Notifications are intended for states that require attention, such as `NeedsReview`.
+### Categories, watches, and rules
 
-### Local API
+Categories have stable keys and mutable labels. Watches have unique IDs. Rule IDs are unique within a watch; each rule selects a category and authorized destination root.
 
-```toml
-[api]
-enabled = true
-host = "127.0.0.1"
-port = 5274
-```
+`classify = false` selects deterministic root routing. `classify = true` permits semantic refinement consistent with the global mode. Whether this flag also exempts those files from later grouping must be defined explicitly; do not silently overload it into another consent mechanism.
 
-The V1 REST API is local-only.
+Ambiguous extension mappings within a watch are rejected. These examples use extension rules. Broader content-aware category routing may require an explicit contract extension rather than undocumented precedence.
 
-`host` must remain bound to `127.0.0.1`. Remote or LAN exposure is outside V1.
+### API, notifications, and MCP
 
-### MCP
+The standalone API remains localhost-only at `127.0.0.1:5274`. Notifications can be enabled/disabled and initially use immediate delivery. MCP remains optional.
+
+## Complete illustrative example
 
 ```toml
-[mcp]
-enabled = false
-```
-
-MCP is an architectural extension point and does not block V1. The adapter is disabled by default and is not required for the first usable release.
-
-## Categories
-
-Categories use a stable machine-readable key and a mutable display label.
-
-```toml
-[[categories]]
-key = "documents"
-label = "Documents"
-```
-
-The key is the stable identity referenced by rules.
-
-Changing a label must not require changing the key.
-
-## Watches
-
-Each watched directory has a stable ID.
-
-```toml
-[[watches]]
-id = "downloads"
-path = "~/Downloads"
-enabled = true
-```
-
-| Option | Description |
-| --- | --- |
-| `id` | Stable watch identifier. |
-| `path` | Directory observed by LzyFlow. |
-| `enabled` | Whether the watch is active. |
-
-Watch IDs must be unique.
-
-## Rules
-
-Rules belong to a watch.
-
-```toml
-[[watches.rules]]
-id = "documents"
-extensions = [".pdf", ".docx", ".txt"]
-category = "documents"
-destination = "~/Documents"
-classify = true
-cleanup = { mode = "never" }
-```
-
-| Option | Description |
-| --- | --- |
-| `id` | Stable rule identifier within the watch. |
-| `extensions` | Extensions matched by the rule. |
-| `category` | Stable category key. |
-| `destination` | Allowed destination root. |
-| `classify` | Whether semantic placement beneath the destination root is allowed. |
-| `cleanup` | Cleanup policy associated with the destination. |
-
-When `classify = false`, routing is deterministic and the file is placed at the configured destination root.
-
-When `classify = true`, classification may choose the category root, an existing active directory beneath it, or a proposed new folder. The classifier never receives authority to choose an arbitrary filesystem path.
-
-Within a single watch, duplicate or ambiguous extension mappings are rejected instead of introducing rule priorities.
-
-## Cleanup
-
-V1 supports:
-
-```toml
-cleanup = { mode = "never" }
-```
-
-and:
-
-```toml
-cleanup = { mode = "on_startup" }
-```
-
-Cleanup may remove only files LzyFlow can identify through its own history as files it placed there.
-
-LzyFlow must never blindly empty a configured directory.
-
-`after_days` cleanup is deferred beyond V1.
-
-## Complete Example
-
-```toml
-# LzyFlow configuration
+# LzyFlow configuration — explicit example user choices
 
 [general]
 poll_interval_seconds = 5
@@ -180,8 +124,11 @@ stable_checks_required = 3
 stalled_after_seconds = 600
 
 [classification]
+mode = "dynamic"
 lightweight_threshold = 0.75
 semantic_threshold = 0.80
+minimum_candidate_margin = 0.05
+threshold_profile = "example-unvalidated"
 
 [notifications]
 enabled = true
@@ -200,12 +147,18 @@ key = "documents"
 label = "Documents"
 
 [[categories]]
-key = "installers"
-label = "Installers"
-
-[[categories]]
 key = "images"
 label = "Images"
+
+[[destinations]]
+key = "documents-root"
+path = "~/Documents"
+include_existing_files = true
+
+[[destinations]]
+key = "pictures-root"
+path = "~/Pictures"
+include_existing_files = false
 
 [[watches]]
 id = "downloads"
@@ -214,19 +167,11 @@ enabled = true
 
     [[watches.rules]]
     id = "documents"
-    extensions = [".pdf", ".docx", ".txt"]
+    extensions = [".pdf", ".docx", ".txt", ".md"]
     category = "documents"
     destination = "~/Documents"
     classify = true
     cleanup = { mode = "never" }
-
-    [[watches.rules]]
-    id = "installers"
-    extensions = [".exe", ".msi"]
-    category = "installers"
-    destination = "~/LzyFlow/Temp/Installers"
-    classify = false
-    cleanup = { mode = "on_startup" }
 
     [[watches.rules]]
     id = "images"
@@ -237,44 +182,35 @@ enabled = true
     cleanup = { mode = "never" }
 ```
 
-## Validation
+Examples do not select a mandatory document extractor or visual model. File-type support and evidence sources must be declared by the implementation.
 
-A candidate configuration is accepted only if the complete file validates.
+## Cleanup
 
-Validation includes:
+The earlier V1 plan includes explicit policies `never` and `on_startup`; `after_days` remains deferred. Cleanup affects only files placement history proves LzyFlow placed under an enabled cleanup policy. Adopting existing files is insufficient deletion provenance.
 
-- every referenced category exists;
-- watch IDs are unique;
-- rule IDs are unique within their watch;
-- extensions are valid;
-- extensions are not ambiguously duplicated within one watch;
-- destinations are valid;
-- thresholds are between `0.0` and `1.0`;
-- `stable_checks_required >= 1`;
-- `poll_interval_seconds > 0`;
-- cleanup modes and parameters are valid;
-- the V1 API remains localhost-only.
+`Downloads/to-be-deleted` remains manually managed regardless of its name. It must not inherit cleanup authority from an enclosing watch or destination. Initial examples use `never`.
 
-No valid subset of an invalid configuration is applied.
+## Validation and hot reload
 
-## Hot Reload
+Validate a complete candidate before applying it:
 
-Manual edits to `config.toml` are watched by the daemon.
+- explicit valid global mode;
+- explicit per-destination adoption choices, with no conflicting choices for one effective root;
+- unique category keys, watch IDs, and scoped rule IDs;
+- consistent category/destination references;
+- valid unambiguous extension mappings;
+- valid authorized destination roots;
+- thresholds and margins compatible with their declared policy;
+- known cleanup policies;
+- localhost-only API binding;
+- temporary-folder exclusion before mutation.
 
-The reload flow is:
+Invalid candidates are rejected entirely and preserve the last-known-good configuration. Pending actions are revalidated against current mode, scope, and authorization.
 
-```text
-file changed
-    -> parse complete candidate
-    -> validate complete candidate
-    -> apply atomically if valid
-    -> otherwise keep last-known-good configuration
-```
+CLI/TUI changes use shared validation. In standalone deployment they go through the daemon. Setup while the daemon is stopped needs explicit ownership and must not race an active writer; bootstrap ownership remains an implementation decision.
 
-CLI configuration changes follow the daemon boundary:
+Database/token locations follow XDG runtime conventions. Logs initially go to journald.
 
-```text
-CLI -> REST API -> daemon validation -> config write -> active configuration
-```
+## Open choices
 
-Database, token, and log locations are runtime concerns and are intentionally absent from the TOML configuration.
+Grouping/split criteria, numeric limits, grace configurability, temporary-folder return behavior, fine-grained exclusions, post-setup adoption changes, override syntax, CLI grammar/output, model choice, and the final schema remain open. They must not be silently filled in from examples.

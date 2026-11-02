@@ -1,21 +1,27 @@
 # LzyFlow — V1 Technical Design
 
-**Revision:** 6<br>
-**Status:** Product V1 architecture finalized; BSc research profile and classifier evaluation contract added<br>
+**Revision:** 8<br>
+**Status:** Reviewed product behavior recorded; model selection, detailed grouping policy, and final thesis scope remain open<br>
+**Reviewed:** 2026-11-02<br>
 **Platform:** Linux-only for V1  
 **Purpose:** Canonical V1 technical specification and implementation handoff
 
 ## 1. Purpose and product goal
 
-LzyFlow is a local file-organization service that automatically keeps one or more configurable directories organized. The default use case is the user's Downloads directory, resolved through XDG user directories where possible, but arbitrary watched directories are supported through configuration.
+LzyFlow is a local file organizer for configurable directories, with Downloads as the initial primary use case. It aims to organize files with little user effort while keeping uncertainty, user-selected exclusions, and filesystem authorization explicit.
 
-The V1 product goal is:
+The core behavior is:
 
-> Automatically keep a configurable directory organized while preferring no filesystem action over an uncertain or potentially destructive action.
+1. Detect download completion using the stability/completion mechanism.
+2. Allow one minute before organization.
+3. Exclude files the user moves into `Downloads/to-be-deleted`.
+4. Place eligible files in a suitable existing destination or an appropriate broad category root when confident.
+5. In dynamic mode, adaptively group managed files into useful named subfolders, including after initial placement.
+6. Send uncertain decisions to review; preserve the current file until a valid action is available.
 
-V1 must be a genuinely usable Linux desktop utility rather than a technical prototype. It is also designed so its core and application layers can later be embedded in Lzy-Brain or another .NET host.
+Revision 8 records the requirements review. It supersedes the previous blanket new-folder approval rule, direct-child-only restriction, automatic static default, optional-only TUI scope, and mandatory neural-ranker selection. This document specifies intended behavior; it does not claim those features are implemented.
 
-The Product V1 architecture is finalized. Exact DTOs, model selection, the concrete confidence-calibration algorithm, migration details, Linux library choices, the systemd unit, and installer mechanics remain implementation decisions. Sections 23-31 define the bounded BSc research profile and the normative evaluation and verification contracts that constrain those choices.
+Architecture and earlier safety foundations are retained. Detailed grouping criteria, limits, complete configuration/migration contracts, AI architecture, and final thesis deliverables remain explicitly open. See [AI Research Plan](ai-research.md).
 
 ## 2. Core principles
 
@@ -27,54 +33,38 @@ The Product V1 architecture is finalized. Exact DTOs, model selection, the concr
 6. **Shared application logic.** REST, CLI, TUI, a future MCP adapter, embedded hosts, and tests use the same application operations.
 7. **Linux V1 with real seams.** Linux integration may be direct. Interfaces are introduced only for genuine platform boundaries.
 
-## 3. V1 scope freeze
+## 3. Product requirements and scope boundaries
 
-### 3.1 Included in V1
+### 3.1 Agreed Product V1 behavior
 
-- Linux-only implementation.
-- User-scoped `lzyflowd` service managed through `systemd --user`.
-- XDG-compatible configuration, data, token, and cache locations.
-- SQLite persistence and TOML configuration.
-- Atomic configuration hot reload with validation and last-known-good fallback.
-- Startup recovery and filesystem reconciliation.
-- `FileSystemWatcher` for normal event-driven observation.
-- Configurable watched directories and per-watch rules.
-- Download stability monitoring.
-- Deterministic routing.
-- Lightweight and semantic classification.
-- Configurable provisional thresholds, initially `0.75` and `0.80`, calibrated and frozen through the process in Section 26 before final evaluation or release defaults are claimed.
-- Category-root, existing-directory, and proposed new-folder results.
-- Manual review state with the source file left in place.
-- Safe synchronous file moves and undo history.
-- No implicit overwrite.
-- Normalized directory identity and directory soft deletion.
-- Filename, derived extension, source URL, referrer URL, and Linux origin metadata when available.
-- Limited content extraction only when required by semantic classification.
-- A normal CLI and an interactive TUI using the same application operations.
-- A versioned localhost REST API.
-- Per-user bearer-token authentication and managed-root filesystem authorization.
-- Daemon-integrated native Linux notifications.
-- Self-contained `linux-x64` distribution, single-file where practical, with a simple install and uninstall workflow.
+- Linux execution with the existing Core/Application/Infrastructure/Daemon/CLI boundaries.
+- Configurable watches, categories, and authorized destination roots.
+- Download stability/completion detection followed by a 60-second grace period.
+- `Downloads/to-be-deleted` excluded from organization and automatic deletion.
+- Initial setup through both TUI and CLI, including fully noninteractive CLI setup and operation.
+- Setup asks for supported user-facing choices rather than silently choosing organization mode or adopting files.
+- Per-destination choice to include or exclude pre-existing files from management.
+- One global static/dynamic mode initially.
+- Static mode uses existing destinations; dynamic mode adds useful nested creation and adaptive regrouping.
+- Broad category-root placement when confident and no specific folder fits.
+- Confident authorized placement/creation can execute automatically; uncertainty goes to review.
+- Recognizable document-derived folder names and avoidance of unnecessary fragmentation.
+- SQLite history, review, safe moves, recovery, no implicit overwrite, and validated undo.
+- TOML validation and last-known-good reload behavior, XDG paths, localhost REST, and Linux integration from the existing V1 plan.
 
-### 3.2 Deferred beyond V1
+### 3.2 Optional features and later work
 
-- Windows and macOS implementations.
-- GUI.
-- AUR and other package-manager distribution.
-- `linux-arm64` unless a concrete need appears.
-- Remote or LAN REST access.
-- A required MCP adapter. MCP compatibility remains an architectural direction but does not block the first usable release.
-- Microservices, Redis, RabbitMQ, distributed workers, or background-job infrastructure for normal local moves.
-- SHA-256 duplicate detection and general-purpose deduplication.
-- Ranked classifier candidates in user-facing Product V1 APIs. The offline evaluation runner may retain rankings and experiment provenance required by Sections 25-29.
-- A general-purpose vector database or persistent note-embedding subsystem. A bounded local embedding model may be used by the semantic classifier without introducing a vector database.
-- Adaptive learning from corrections.
-- Automatic numbered filename collision resolution.
-- Aggressive cleanup.
-- Arbitrary filesystem access.
-- Complex audit or event sourcing.
-- Periodic full reconciliation unless real-world testing proves it necessary.
-- Notification batching and `after_days` cleanup.
+- Folder rename/merge suggestions showing proposed changes and affected files; execution always requires approval.
+- Toggleable per-destination mode overrides after the initial global mode implementation.
+- Windows/macOS, GUI, package-manager distribution, and broader integrations.
+- MCP adapter; it is not required for the first usable release.
+- Learned personalization, distillation, and other research extensions only if selected later.
+
+### 3.3 Decisions not frozen by this revision
+
+No model, mandatory training contribution, experiment roster, dataset size, group/split threshold, minimum file count, depth/rate limit, or final thesis subset is selected. Exact naming transformations, multiple-missing-parent creation, adoption exclusions, grace configurability, and temporary-folder return behavior remain open.
+
+The product needs limits against fragmentation, but their types and values must be chosen explicitly. Do not treat assistant recommendations or example TOML as confirmed settings. Automatic deletion of temporary downloads and fully autonomous existing-folder renaming/merging are not part of the agreed behavior.
 
 ## 4. Architecture
 
@@ -122,30 +112,37 @@ The names below are illustrative rather than frozen:
 
 V1 may use ordinary .NET filesystem operations and `FileSystemWatcher` directly. Do not wrap `File.Move`, `Directory.CreateDirectory`, `File.Exists`, or similar calls merely to appear cross-platform. Genuine seams include `IDownloadOriginReader`, `INotificationService`, XDG or platform path resolution, and service installation or runtime integration.
 
-## 5. CLI and TUI
+## 5. CLI, TUI, and initial setup
 
-Running `lzyflow` is expected to open the TUI. The TUI covers Dashboard, Review, History, Watched directories, Categories, Rules, Settings, and Service. It exposes no unique business logic.
+Both interfaces are required. TUI setup guides the user through supported settings. CLI setup provides the same choices and also supports fully noninteractive operation for a larger integrating project.
 
-The current CLI capability map is:
+Setup covers mode, watches, categories, roots, routing, existing-file adoption separately per destination, and applicable supported notification/API/policy settings. It can offer suggestions, but it must obtain the user's choices. It does not expose internal model dimensions or unfinished features as mandatory setup questions.
+
+The following capability map is illustrative, not frozen command grammar:
 
 ```text
 lzyflow
-lzyflow status [--json]
-lzyflow review [--json]
-lzyflow approve <file-id>
-lzyflow resolve <file-id> ...
-lzyflow ignore <file-id>
-lzyflow history [--json]
-lzyflow undo <operation-id>
+lzyflow setup ...
+lzyflow status ...
+lzyflow review ...
+lzyflow approve <decision-id> ...
+lzyflow resolve <decision-id> ...
+lzyflow ignore <file-id> ...
+lzyflow history ...
+lzyflow undo <operation-id> ...
 lzyflow watch list|add|remove|enable|disable ...
 lzyflow category list|add|rename|remove ...
 lzyflow rule list|add|edit|remove ...
-lzyflow config show|path|validate
-lzyflow reconcile
-lzyflow service install|start|stop|restart|status|uninstall
+lzyflow config show|path|validate ...
+lzyflow reconcile ...
+lzyflow service install|start|stop|restart|status|uninstall ...
 ```
 
-The capability set is settled. Exact parser grammar, flags, prompts, JSON fields, exit codes, key bindings, and screen layouts are implementation details. Guided prompts may complement explicit flags.
+Fully noninteractive commands must accept sufficient explicit input and report missing choices without opening prompts or a TUI. Structured results and stable exit codes are recommended; their exact schemas remain open.
+
+Shared application services own validation and behavior. In standalone operation, the daemon remains the authority and thin clients use REST. Bootstrap setup with the daemon stopped needs a defined ownership mechanism so configuration writes do not race. Embedded hosts reuse application services directly.
+
+Optional rename/merge commands and review DTOs need their own execution/reversal design before shipping. They are not implied by the illustrative file-operation grammar above.
 
 ## 6. REST and MCP boundary
 
@@ -190,39 +187,23 @@ Conceptual startup order:
 6. Start the localhost REST API.
 7. Enter normal operation.
 
-## 8. Security model
+## 8. Security and management authority
 
-The API listens only on `127.0.0.1`. Binding to `0.0.0.0` or another externally reachable address is outside V1.
+The standalone API binds only to `127.0.0.1`. A per-user bearer token at the XDG data location uses restrictive permissions such as `0600`; clients send `Authorization: Bearer <token>`.
 
-A per-user token is stored at:
+Authentication and filesystem authority are independent. Every mutation must satisfy configured managed-root authorization, current mode, file-management scope, temporary-folder exclusion, current file stability, and applicable approval rules.
 
-```text
-~/.local/share/lzyflow/api.token
-```
+Configuring a destination does not adopt all its contents. Initial setup separately asks whether pre-existing files in that destination may be managed. A broad adoption choice does not authorize deletion or bypass explicit rename/merge approval.
 
-with permissions such as `0600`. Clients send:
+Authorization uses canonical/real paths, not lexical prefixes. Resolve and authorize the existing parent of each newly created child, then append one validated label. The authorized parent may be an existing nested folder beneath the selected root; this is not a direct-child-only product restriction. Arbitrary absolute parent paths from model output are forbidden.
 
-```http
-Authorization: Bearer <token>
-```
+`Downloads/to-be-deleted` is excluded before classification, regrouping, cleanup, and pending mutation. Manual relocation there invalidates organization eligibility. Recheck immediately before mutation rather than trusting an earlier watcher event or prediction.
 
-Two independent boundaries apply:
+The same boundaries apply to REST, CLI, TUI, internal grouping, embedded hosts, and future adapters. See [Security](security.md) for details.
 
-```text
-Who may control LzyFlow?
-    -> local bearer token
+## 9. File lifecycle and organization workflows
 
-What may LzyFlow modify?
-    -> configured managed roots and destinations
-```
-
-Authentication never grants arbitrary filesystem authority. Every source and destination path is normalized and checked against the active configured roots before mutation. The same rule applies to REST, CLI, TUI, and any future MCP adapter.
-
-Authorization must be based on the canonical/real filesystem path, not only on lexical path prefixes. Symlinks and other path indirections must not allow a source or destination that appears to be inside a managed root to resolve outside it. For an existing path, LzyFlow resolves the real path before authorization. For a new child path, it resolves and authorizes the existing parent directory first, then appends only a validated single path segment. If canonical resolution is ambiguous or cannot be established safely, the operation is rejected.
-
-## 9. File lifecycle
-
-Current file states:
+The earlier lifecycle vocabulary is retained as a baseline:
 
 ```text
 detected
@@ -238,40 +219,44 @@ failed
 ignored
 ```
 
-### 9.1 Canonical V1 state transitions
+### 9.1 Ingestion and grace eligibility
 
-Only the following transitions are valid in V1. Application code must not invent additional transitions without an explicit design update.
+Observation starts stability/completion detection, not the grace timer. After completion is established, a separate 60-second grace period must elapse before automatic organization. Incomplete or stalled files remain untouched.
 
-| From | Allowed next state(s) | Typical reason |
-| --- | --- | --- |
-| `detected` | `waiting_for_stability`, `ignored`, `failed` | Begin observation, ignore by rule, or fail before observation can continue. |
-| `waiting_for_stability` | `ready`, `stalled`, `ignored`, `failed` | File becomes stable, stops progressing, is intentionally ignored, or becomes unavailable/unreadable. |
-| `stalled` | `waiting_for_stability`, `ignored`, `failed` | Writing resumes, user/rule ignores the file, or monitoring can no longer continue. |
-| `ready` | `classifying`, `approved`, `ignored`, `failed` | Start classification, accept a deterministic rule with no semantic classification, ignore, or fail before a destination is finalized. |
-| `classifying` | `approved`, `needs_review`, `failed` | Classification succeeds confidently, remains uncertain, or fails. |
-| `needs_review` | `approved`, `ignored`, `failed` | User approves/resolves the stored decision, ignores the file, or the file becomes unusable before resolution. |
-| `approved` | `moving`, `needs_review`, `failed` | Start the validated move, return to review if the stored destination is no longer safe/valid, or fail validation. |
-| `moving` | `completed`, `needs_review`, `failed` | Move completes, recovery finds an ambiguous state, or the mutation fails. |
-| `completed` | `moving` | A validated undo or another explicit reverse move begins. |
-| `failed` | _none automatically_ | Recovery or retry requires an explicit application action defined during implementation. |
-| `ignored` | _none automatically_ | The file remains untouched unless a future explicit user action reintroduces it. |
+A manual move into `Downloads/to-be-deleted` cancels pending organization. No dedicated temporary flag UI or extra Pending directory is required. Temporary files must not be re-ingested from that subtree.
 
-Recovery may move `classifying` back to `ready` after restart because no classifier invocation survives process termination. `waiting_for_stability` resumes observation in place. These recovery transitions are part of the V1 recovery model rather than normal forward processing.
+The precise persistence/state representation of completion time and grace eligibility is not finalized. Do not invent an additional enum value or reset grace on every event without a design decision. Restart behavior must preserve the exclusion and prevent premature mutation; exact timer recovery semantics need an implementation audit.
 
-Normal flow:
+### 9.2 Initial placement
 
-1. Detect a file in an enabled watch and create or update its runtime record.
-2. Wait for stability.
-3. Use the matching per-watch rule to establish category and destination root.
-4. If `classify = false`, prepare the deterministic destination-root move.
-5. If `classify = true`, run lightweight classification and escalate only when needed.
-6. Accept a sufficiently confident bounded result, or persist the suggestion and set `NeedsReview` while leaving the file in place.
-7. Immediately before mutation, validate source existence, authorization, destination existence and active state, and filename availability.
-8. Perform the move, update current state, and record historical source and destination snapshots.
+After grace expiry and a fresh eligibility check:
 
-## 10. File stability detection
+1. Establish the configured category and authorized root.
+2. If a specific existing folder fits confidently, use it.
+3. If a category root is a confident appropriate fallback, place the file there.
+4. If the action is uncertain or unavailable, retain the current location and review it.
 
-Defaults:
+A file already placed at a root can later participate in adaptive grouping. The initial move does not terminate all future organization.
+
+### 9.3 Adaptive regrouping
+
+Dynamic mode considers eligible managed files at category roots and within managed folders. It may establish broad groups first and later useful nested subgroups. Existing-file participation follows that destination's explicit adoption choice.
+
+A group awaiting useful additional evidence is not necessarily an ingestion failure or a review item. A genuinely uncertain proposed placement, creation, or name requires review. Exact scheduling and this distinction need the selected grouping policy.
+
+Regrouping can revisit a completed file for classification and a new validated move. That is an explicit extension to the earlier one-shot lifecycle. A proposed mapping is `completed -> classifying -> approved|needs_review -> moving -> completed`, while undo remains a validated reverse move. Final transition implementation must account for group membership and partial execution before being treated as frozen.
+
+### 9.4 Review and execution
+
+Approval executes the fixed stored decision, never silently reruns the model. It revalidates current mode, management scope, file version, temporary exclusion, parent identity, authorization, and conflicts. Invalidated decisions return to review.
+
+New-folder creation does not require blanket approval when confident and permitted in dynamic mode. Optional rename/merge suggestions require approval even when confident. Their group/folder-level review representation must be defined explicitly rather than forced into a file-only DTO.
+
+All automatic and approved actions use the same execution rules. Failed/ambiguous recovery must not delete data or silently choose another destination.
+
+## 10. Download stability and temporary files
+
+Earlier stability parameters are provisional operational defaults:
 
 ```text
 poll interval = 5 seconds
@@ -279,69 +264,50 @@ stable checks required = 3
 stalled after = 600 seconds
 ```
 
-Each check considers at least file size and last-write time. Known temporary download extensions such as `.crdownload` and `.part` remain unprocessed. A browser rename to the final name is useful evidence, but the final file still passes stability checks.
+Observe at least size and last-write time, and recognize temporary download extensions such as `.crdownload` and `.part`. An unchanged file is evidence, not proof of completion. Origin/downloader signals may supplement stability where available. Resumed writing invalidates completion evidence and organization eligibility.
 
-A single unchanged interval does not prove completion. After three consecutive unchanged checks the file becomes a stable candidate. Ten minutes without useful progress sets `stalled`, but never authorizes a move. If writing resumes, the file returns to `waiting_for_stability`.
+The agreed grace period is **one minute after the download finishes**. It is separate from stability observations and must not be consumed while downloading. `stalled` never means eligible to move.
 
-Stability observations are transient runtime data and are not persisted in SQLite.
+The user marks a download temporary by moving it into `<Downloads>/to-be-deleted`. Files and pending work there are excluded from organization. The utility does not automatically delete them.
 
-## 11. Progressive classification
+Whether the minute is configurable, who creates the folder during setup, behavior when a file moves back out, and the policy for other watches are open. Stability counters can be transient, but implementation must determine what completion/grace information needs durability for restart correctness.
 
-### 11.1 Contract
+## 11. Routing, adaptive grouping, and decision policy
 
-```text
-ClassificationContext
-    FileName
-    Extension
-    SourceUrl
-    ReferrerUrl
-    CategoryKey
-    ExistingFolders
+### 11.1 Static and dynamic behavior
 
-Folder candidate
-    directory ID
-    display or folder name
+| Mode | Existing destinations | New folders | Later grouping |
+| --- | --- | --- | --- |
+| Static | Configured root and suitable active folders | No classifier-proposed creation | Placement into existing destinations only |
+| Dynamic | Same | Confident useful creation can execute automatically | Eligible files may be regrouped into meaningful nested folders |
 
-ClassificationResult
-    target = category_root | existing_folder | new_folder
-    existing directory ID or proposed folder name
-    confidence
-```
+Setup asks the user for one global mode. Per-destination overrides are a later toggleable feature. Static does not require a fixed-output neural classifier; discovered existing folders can still become candidates.
 
-The classifier receives normalized context and no arbitrary filesystem access. It returns semantic intent, never a path. V1 returns only the single best result plus confidence; ranked alternatives are deferred.
+### 11.2 Broad roots and useful groups
 
-`category_root` is a valid result because the classifier must not be forced to create unnecessary subfolders.
+Documents, Pictures, Projects, and Videos illustrate configurable roots. When a narrower destination is unavailable but the category is clear, files can move to that root after the download grace period. They need not remain in Downloads awaiting a group.
 
-The research and provenance extension of this contract is defined in Section 25. Product DTOs may expose a smaller projection, but application decisions retain classifier identity, version, score, confidence, and reason codes.
+Dynamic mode can later form related groups there or subdivide an established course/project collection. Reuse suitable existing folders. Grouping must improve navigation rather than reward one folder per file.
 
-### 11.2 Stages and thresholds
+There is no universal minimum file count. The evidence required for a useful group, single-file exceptions, subdivision criteria, activity-aware waiting, limits, and their values remain open. A quiet-period strategy is a proposal, not an agreed timer. Do not confuse that open grouping timing with the confirmed 60-second download grace period.
 
-**Lightweight classification** may use extension, filename, source URL or domain, and referrer URL. The default acceptance threshold is `0.75`. Lower confidence escalates to semantic classification.
+### 11.3 Names, parents, and uncertainty
 
-**Semantic classification** may use richer metadata, limited content extraction, and a small local model or classifier. The default threshold is `0.80`. Lower confidence becomes `NeedsReview`.
+Names must retain recognizable meaningful information from the documents, and for a group from their shared evidence. Exact substring rules, abbreviation/language policy, and extractive versus generative naming are unresolved.
 
-A stricter automatic new-folder threshold near `0.90` is proposed because changing directory structure is riskier than selecting an existing directory. The exact value is not finalized and is absent from the TOML baseline.
+A new-folder action names a known authorized parent and a validated child label. Parents can be nested beneath the configured root. Whether one plan may create multiple missing parent levels is open.
 
-Confidence must be calibrated during implementation rather than trusted solely because a model reports it.
+Poor scores for existing folders alone do not justify creation. Insufficient evidence or ambiguous grouping can explain those scores. A useful proposed group, suitable name/parent, acceptable uncertainty, and absence of unnecessary overlap are needed before creation.
 
-Thresholds are policy parameters rather than inherent model truth. Their calibration, margin requirement, and final selection follow Section 26. Final evaluation must not tune thresholds on the held-out test split.
+### 11.4 Progressive evidence and action confidence
 
-### 11.3 New-folder validation
+Lightweight evidence may include extension, filename, and available origin metadata. A semantic stage may use bounded text or another selected local model. Earlier thresholds `0.75` and `0.80` remain provisional examples; no creation threshold or trained model is selected.
 
-A classifier proposes only a label. Deterministic validation rejects:
+Raw similarity, logits, and model-reported confidence are not interchangeable. Evaluate the action policy for the actual model, candidate distribution, and task. Group creation/splitting and file placement may need different acceptance criteria. If an action cannot be justified confidently, send it to review.
 
-- empty names;
-- absolute paths;
-- `.` and `..`;
-- path separators;
-- traversal attempts;
-- any name that cannot be safely created under the configured destination root.
+### 11.5 Optional restructuring
 
-### 11.4 Review behavior
-
-Low confidence never moves the file to a Pending directory. The file remains at its current path. SQLite stores the fixed suggestion and confidence so `approve` executes the stored decision rather than rerunning classification.
-
-If the stored target directory was deleted, approval becomes invalid and requires review. `resolve` applies the user's replacement decision while preserving the original classifier suggestion as history. `ignore` leaves the file in place and sets its file status to `ignored`.
+Rename/merge suggestions are optional. Show proposed changes and affected files, and require approval. Automatic file placement/new subgroup creation does not grant permission for autonomous renaming or merging of existing folders. Folder deletion, collision handling, identity changes, and reversal semantics need a separate design before implementing this extension.
 
 ## 12. Download-origin metadata
 
@@ -356,20 +322,15 @@ The resulting `source_url` and `referrer_url` are persisted because metadata may
 
 Missing or unreadable metadata is not fatal. Classification continues with filename and extension. Windows `Zone.Identifier` and macOS `kMDItemWhereFroms` are known future seams but have no V1 implementations.
 
-## 13. Categories watches rules destinations and cleanup
+## 13. Categories, destinations, setup scope, and cleanup
 
-- A category has a stable `key` and a mutable presentation `label`.
-- A watch has a stable `id`, path, enabled state, and its own rules.
-- A rule has a stable `id` within its watch.
-- Each rule maps extensions to a category and destination.
-- Category identity and destination path are separate concepts.
-- `classify = false` moves to the deterministic destination root.
-- `classify = true` allows semantic placement beneath the destination root.
-- Ambiguous duplicate extension mappings within one watch are rejected instead of introducing rule priorities.
-- Cleanup is conceptually a destination policy and is stored on the rule.
-- V1 examples use `never` and `on_startup`.
-- Cleanup may delete only files LzyFlow can identify through its history as files it placed there. It never empties a directory blindly.
-- `after_days` is deferred.
+Categories have stable keys and mutable labels; watches and rules retain stable identities. Rules establish category and authorized root, with unambiguous extension mappings. The rule model must be extended explicitly if content-aware broad-category routing needs additional semantics.
+
+Each destination independently records the user's setup choice on pre-existing-file management. Configuring a watch/root is not consent to adopt every existing file. Files LzyFlow places can participate in later dynamic grouping. Fine-grained exclusions, adoption rescans, and post-setup changes remain open.
+
+`classify = false` retains deterministic root routing; `classify = true` permits semantic placement under the selected mode. Whether this flag also opts out of later grouping is unresolved and must not be inferred from its name.
+
+The earlier V1 cleanup plan supports explicit `never` and `on_startup` policies; `after_days` is deferred. Cleanup is limited to files placement history proves LzyFlow placed under a matching policy. Adoption alone is not deletion provenance. `Downloads/to-be-deleted` is manually managed and excluded from automatic deletion even if an enclosing watch has cleanup settings.
 
 ## 14. Directory identity soft deletion and reconciliation
 
@@ -379,7 +340,7 @@ Directories are first-class database entities. A file's current full path is:
 directories.path + files.file_name
 ```
 
-Renaming a directory changes one `directories.path` value instead of every associated file row. Historical `file_operations.source_path` and `destination_path` values remain text snapshots.
+Directory identity avoids rewriting every associated file row after a path change. With stored full directory paths, a nested rename also requires reconciling affected descendant directory paths and containment. Historical `file_operations.source_path` and `destination_path` values remain snapshots.
 
 Normal event-driven behavior:
 
@@ -388,7 +349,7 @@ Normal event-driven behavior:
 - known directory deleted -> set `is_deleted = true` and `deleted_at = now`;
 - directory moved outside a managed destination -> stop treating it as an active managed candidate.
 
-Classifier queries use only `is_deleted = false` directories.
+Classifier queries use only active authorized directories. File membership is additionally filtered by adoption provenance, temporary exclusion, and current management scope; discovering a path does not itself adopt every file beneath it.
 
 Soft-deleted directories remain for approximately 30 days and may then be purged. The retention period may become configurable later. A later directory created at the same path normally receives a new identity.
 
@@ -396,56 +357,37 @@ Active directory paths must be unique, preferably through a partial SQLite uniqu
 
 Reconciliation runs at daemon startup, after relevant configuration reloads, and through an explicit manual command if exposed. Periodic full reconciliation is deferred. If a rename happened while the daemon was offline and identity cannot be established reliably, V1 treats the old directory as deleted and the discovered directory as new.
 
-If a daemon-driven directory rename is exposed, the filesystem change occurs before the database path update. Folder-rename undo is not required for V1; file-move undo remains required.
+Observed user-driven renames are reconciled with identity and scope checks. Optional daemon-driven rename/merge suggestions require approval and a separately designed persistence/reversal protocol; no folder-undo guarantee or exemption is selected here. File-move undo remains part of the baseline.
 
-## 15. Filesystem operations failure and recovery
+## 15. Filesystem operations, failure, and recovery
 
-`approve`, `resolve`, `ignore`, and `undo` normally execute synchronously:
+Application execution validates current source state, file-management scope, temporary exclusion, mode, canonical authorization, parent identity, filename availability, and applicable approval before mutation. It records durable history and the outcome. SQLite and filesystem changes do not form one atomic transaction.
 
-```text
-REST request
-    -> read persistent state
-    -> validate current filesystem and authorization
-    -> perform mutation
-    -> update SQLite and history
-    -> return result
-```
+Per-file moves remain synchronous for normal local operations. Group creation/regrouping needs an explicit plan containing its fixed membership and destinations before execution. Exact plan persistence and group-level review schemas are open. Do not claim a series of file moves is atomic.
 
-`file_operations` is audit and history, not a queue. A downloading file may have `files.status = waiting_for_stability` without any operation row. A row is written only for an attempted filesystem mutation, and its final status is either `completed` or `failed`.
+Required behavior:
 
-Required failure behavior:
+- Uncertainty leaves the current file untouched pending review.
+- A temporary-folder relocation cancels pending organization rather than causing a retry into a new destination.
+- A filename collision never overwrites; surface it for review.
+- A disappeared root/mount is not blindly recreated.
+- A stale target or changed file invalidates the stored action.
+- Semantic model failure degrades semantic-required work to review/failure while the host stays alive where possible.
+- Database failure disables autonomous mutation.
+- Concurrent proposals for one folder do not create duplicate destinations or competing moves.
+- If a proposed folder appears before execution, revalidate identity and the fixed intent; do not silently treat it as an interchangeable target.
+- If creation succeeds but moves fail, preserve files and reconcile the created directory. Do not automatically delete a folder that may contain user data.
 
-- Low confidence -> `NeedsReview`, source untouched.
-- Classifier exception -> `failed`, source untouched.
-- Semantic classifier unavailable -> daemon remains alive; lightweight classification continues where possible; semantic-required work becomes review or degraded.
-- Destination filename exists -> `NeedsReview`; no overwrite and no automatic `file (1).pdf` naming.
-- Destination root or mount is unavailable -> do not recreate it blindly; source remains untouched.
-- Target directory deleted after classification -> stored decision is invalid; do not silently reclassify during approval.
-- SQLite unavailable or unusable -> daemon is unhealthy or degraded and autonomous filesystem mutations are disabled.
+### 15.1 Interrupted move recovery
 
-### 15.1 Crash recovery
-
-Conceptual move sequence:
-
-```text
-1. validate operation
-2. files.status = moving
-3. perform filesystem move
-4. update current file and directory state
-5. record operation outcome
-6. files.status = completed
-```
-
-Startup recovery for an interrupted move:
-
-| Filesystem reality | Recovery |
+| Observed state | Recovery |
 | --- | --- |
-| Source missing, destination exists | Treat as likely success and repair SQLite state and history. |
-| Source exists, destination missing | Treat as not completed and restore a suitable processing state. |
-| Both exist | Ambiguous; set `NeedsReview` and delete neither. |
-| Neither exists | Mark failed and surface the missing expected state. |
+| Source absent, destination present | Verify the recorded operation and reconcile likely success; do not guess from an unrelated path alone. |
+| Source present, destination absent | Reconcile the incomplete operation without premature retry. |
+| Both present | Review; delete neither. |
+| Neither present | Surface failed/missing state. |
 
-`waiting_for_stability` resumes monitoring. `classifying` returns to a suitable pre-classification state because no classifier invocation survives restart.
+A group may contain completed, pending, and failed member moves after interruption. Record/reconcile those outcomes individually and expose partial completion. Undo of a file move is another validated move; it does not implicitly delete newly created directories. Optional folder rename/merge execution and reversal require a separate audited design.
 
 ## 16. Notifications
 
@@ -453,21 +395,13 @@ Notifications run inside `lzyflowd` through `INotificationService` and a native 
 
 V1 supports enable or disable and immediate delivery. Batching is deferred. A separate user-session notifier is reconsidered only if a future deployment becomes a system-level daemon outside the logged-in session.
 
-## 17. SQLite state and history
+## 17. SQLite state, baseline schema, and required audit
 
-SQLite stores only data required after restart or for directory identity, classification history, debugging, recovery, and undo. The V1 schema has exactly five tables:
+The earlier persistence design has five tables: `categories`, `directories`, `files`, `classifications`, and `file_operations`. Current location uses directory identity; operation paths are historical snapshots.
 
-```text
-categories
-directories
-files
-classifications
-file_operations
-```
+### 17.1 Existing design baseline
 
-Current-state paths are normalized through `files.directory_id`. Historical operation paths remain stored strings.
-
-### 17.1 Final V1 DBML
+The following DBML preserves the earlier baseline for reference. It is **not a finalized migration for the expanded requirements**.
 
 ```dbml
 Enum file_status {
@@ -607,140 +541,39 @@ Ref: classifications.suggested_directory_id > directories.id
 Ref: file_operations.file_id > files.id
 ```
 
-### 17.2 Schema semantics
+### 17.2 Semantics retained
 
-- `categories` stores only normalized stable category identity. Labels and settings remain in TOML.
-- `directories.category_id` is nullable so a known source directory such as Downloads need not be a semantic destination.
-- `directories.is_deleted` and `deleted_at` implement soft deletion.
-- `files.file_name` plus `files.directory_id` defines current location.
-- `source_url` and `referrer_url` preserve optional origin evidence.
-- One file may have multiple `classifications` rows, for example lightweight `escalated` followed by semantic `accepted` or `needs_review`.
-- `suggested_directory_id` references an existing candidate. `suggested_folder_name` stores a proposed new label.
-- Classifier, preprocessing, score, fingerprint, and reason-code fields preserve the minimum decision provenance required for reproducible evaluation and debugging. They never store extracted document text.
-- `file_operations` stores historical source and destination snapshots and may record failures.
-- Undo is another validated reverse move rather than a parent-operation graph.
-- The schema intentionally has no `review_items`, `folder_revisions`, `config_revisions`, or general event table.
-- `operation_status` has only `completed` and `failed`. Download waiting and review state belong to `files.status` and `classifications.status`; they never create an operation row by themselves.
+Categories store stable identity; TOML stores labels/configuration. Directories support identity, path changes, active uniqueness, and soft deletion. Classifications retain predictions and provenance without document text. Operations record validated filesystem attempts and their outcomes; waiting or review alone is not a move operation.
 
-### 17.3 Migration implementation audit
+### 17.3 Revision 8 migration audit
 
-Before the first migration is frozen, review:
+Before freezing migrations, explicitly design durable representation for:
 
-- partial uniqueness for active directory paths;
-- foreign-key deletion behavior, especially `ON DELETE SET NULL` after directory purge;
-- recovery and debugging timestamps;
-- migration defaults and nullability for classification-provenance fields;
-- indexes;
-- consistency of state transitions with crash recovery.
+- file-management provenance and per-destination adoption, without duplicating TOML choices unnecessarily;
+- completion/grace eligibility and restart handling;
+- a new child under a selected existing nested parent, which cannot be reconstructed from the label alone;
+- fixed group membership, grouping decisions, and partial multi-file execution;
+- required review snapshots and model/policy provenance;
+- optional rename/merge plans and reversal only if that feature is implemented;
+- foreign-key behavior, active-path uniqueness, directory purge, and source/destination reconciliation.
 
-Any schema change requires an explicit design update rather than undocumented drift.
+The existing file-only suggestion fields are insufficient to declare this work finished. No arbitrary new tables or final column names are selected here. Align DBML, application contracts, and migrations together; do not preserve an "exactly five tables" claim at the expense of required durable behavior.
 
-## 18. Configuration
+## 18. Configuration and setup
 
-TOML is the source of user intent. Stable category, watch, and rule identifiers allow labels and paths to change without breaking references.
+TOML stores user intent. Both TUI and fully noninteractive CLI setup must supply an explicit global organization mode and a separate existing-file choice per destination. Later per-destination mode overrides are optional, distinct from adoption scope.
 
-The Downloads path below is an editable example. Initial Linux configuration should write the XDG-resolved Downloads path when available.
+The [Configuration](configuration.md) document supplies the complete illustrative example and proposed destination records. Its syntax is a proposal, not a frozen parser contract. No silent static default, blanket new-folder approval switch, or universal minimum group count is introduced.
 
-### 18.1 Current TOML baseline
+The agreed one-minute post-completion grace period and temporary-folder exclusion apply regardless of whether their eventual settings use constants or configuration. Configurability is still open.
 
-```toml
-# LzyFlow configuration
+A complete candidate is parsed and validated before atomic replacement. Invalid updates preserve the last-known-good configuration. Validate IDs, references, destination choices, extension ambiguity, policy compatibility, allowed cleanup, localhost binding, and temporary exclusion. Pending actions use current authorization/mode/scope at execution.
 
-[general]
-poll_interval_seconds = 5
-stable_checks_required = 3
-stalled_after_seconds = 600
+Standalone configuration changes use daemon-owned application operations. Initial setup when the daemon is absent needs explicit bootstrap ownership. Database/token locations follow XDG; logs initially use journald.
 
-[classification]
-lightweight_threshold = 0.75
-semantic_threshold = 0.80
-minimum_candidate_margin = 0.05
-threshold_profile = "default-v1"
+## 19. Planned REST baseline
 
-[notifications]
-enabled = true
-mode = "immediate"
-
-[api]
-enabled = true
-host = "127.0.0.1"
-port = 5274
-
-[mcp]
-enabled = false
-
-[[categories]]
-key = "documents"
-label = "Documents"
-
-[[categories]]
-key = "installers"
-label = "Installers"
-
-[[categories]]
-key = "images"
-label = "Images"
-
-[[watches]]
-id = "downloads"
-path = "~/Downloads"
-enabled = true
-
-    [[watches.rules]]
-    id = "documents"
-    extensions = [".pdf", ".docx", ".txt"]
-    category = "documents"
-    destination = "~/Documents"
-    classify = true
-    cleanup = { mode = "never" }
-
-    [[watches.rules]]
-    id = "installers"
-    extensions = [".exe", ".msi"]
-    category = "installers"
-    destination = "~/LzyFlow/Temp/Installers"
-    classify = false
-    cleanup = { mode = "on_startup" }
-
-    [[watches.rules]]
-    id = "images"
-    extensions = [".png", ".jpg", ".jpeg", ".webp"]
-    category = "images"
-    destination = "~/Pictures"
-    classify = true
-    cleanup = { mode = "never" }
-```
-
-The proposed new-folder threshold is intentionally absent because its exact value is not finalized.
-
-### 18.2 Validation and hot reload
-
-The daemon parses and validates the entire candidate before replacing the active configuration. If any part fails, it rejects the candidate, reports the error, and continues with the last-known-good configuration. No valid subset of an invalid file is applied.
-
-Validation includes:
-
-- every rule category exists;
-- watch IDs are unique;
-- rule IDs are unique within a watch;
-- extensions are valid and not duplicated within one watch;
-- destinations are valid;
-- thresholds are between `0.0` and `1.0`;
-- `minimum_candidate_margin` is between `0.0` and `1.0`;
-- `threshold_profile` is non-empty;
-- `stable_checks_required >= 1`;
-- `poll_interval_seconds > 0`;
-- cleanup modes and their parameters are valid;
-- V1 API binding remains localhost-only.
-
-Manual edits are detected by file watching. CLI changes use:
-
-```text
-CLI -> REST API -> daemon validation -> config write -> active configuration
-```
-
-Database and token paths are absent from TOML because XDG locations are part of the runtime model. Logs go to journald.
-
-## 19. Current REST surface
+These are the earlier planned file/configuration routes, not a claim that the runtime already implements them. Setup/adoption, group decisions, partial plans, and optional rename/merge reviews need explicit contract extensions before implementation.
 
 | Method and route | Purpose |
 | --- | --- |
@@ -768,32 +601,40 @@ An explicit reload endpoint is unnecessary because manual TOML edits already tri
 
 Proposed status semantics include `200`, `201`, `204`, `400`, `401`, `403`, `404`, `409`, `422`, and `500`. Exact DTOs, pagination, response envelopes, validation bodies, and final status mapping are implementation decisions.
 
-## 20. Implementation decisions deferred to development
+## 20. Open design and implementation choices
 
-The following choices do not reopen the V1 architecture:
+Resolve these without treating examples as approved answers:
 
-- exact REST DTOs, pagination, validation bodies, and concurrency or idempotency behavior where required;
-- exact CLI flags, prompts, JSON output, exit codes, and TUI key bindings;
-- concrete lightweight and semantic classifier implementations, subject to the interface and evaluation contract in Sections 25-27;
-- concrete calibration algorithm, subject to the data-separation and reporting rules in Section 26;
-- exact new-folder threshold near `0.90`;
-- xattr and native notification libraries;
-- XDG resolver details;
-- systemd unit contents;
-- install and uninstall script mechanics;
-- final SQLite indexes, timestamps, and foreign-key actions;
-- future MCP tools, transport, and permissions.
+- Group coherence, navigational usefulness, subdivision evidence, activity/timing strategy, and single-file exceptions.
+- Limits against over-creation, their values, and configurability.
+- Parent selection and whether a plan can create multiple missing hierarchy levels.
+- Naming transformations, language, extraction, and any generative assistance.
+- Fine-grained destination exclusions, adoption scanning, and later adoption changes.
+- Grace configurability, temporary-folder provisioning/return behavior, and other-watch equivalents.
+- Interaction between rule classification flags and later grouping eligibility.
+- Concrete local model, training obligation, dataset size, and final experiment set.
+- Final TOML/DTO/database contracts and lifecycle/plan persistence.
+- Exact noninteractive commands, output/error formats, bootstrap ownership, and TUI layout.
+- Optional rename/merge priority, eligibility, collision handling, and reversal.
+- Final assessed thesis subset and numeric targets.
 
-## 21. Recommended implementation sequence
+Existing runtime implementation choices such as Linux libraries, unit files, installer mechanics, and calibration algorithms remain subject to the established architecture and measured behavior.
 
-1. Create the .NET solution boundaries and shared application contracts without unused platform implementations.
-2. Implement XDG paths, TOML parsing and hot reload, bearer-token creation, and SQLite migrations.
-3. Implement daemon lifecycle, `FileSystemWatcher`, stability states, directory registration, and reconciliation.
-4. Implement deterministic routing, classifier interfaces, review state, safe path resolution, and synchronous moves.
-5. Add crash recovery, collision handling, unavailable-destination behavior, database-failure safeguards, and native notifications.
-6. Expose the REST API and build the CLI and TUI as thin clients.
-7. Add the offline evaluation runner, freeze the dataset splits, calibrate the decision policy, and produce reproducible comparison and error-analysis reports.
-8. Publish self-contained `linux-x64` binaries and test install, service startup, journal diagnostics, and uninstall on a clean user account.
+## 21. Suggested implementation sequence
+
+This is guidance, not a newly agreed milestone contract:
+
+1. Complete foundation work: paths, configuration, tests, token, persistence, and ownership.
+2. Implement completion detection, one-minute grace, temporary exclusion, and safe deterministic placement.
+3. Add shared TUI/CLI setup, destination adoption choices, global mode, and noninteractive control.
+4. Complete review, safe moves, history, undo, and recovery.
+5. Establish the shared local decision contract and a small controlled comparison before selecting an AI architecture.
+6. Implement existing-folder placement and dynamic group creation/reuse within agreed authority.
+7. Extend to adaptive subdivision, nested parents, regrouping, and partial-plan recovery.
+8. Evaluate quality, uncertainty, fragmentation, naming, and resource costs in Docker.
+9. Add optional rename/merge suggestions or mode overrides only as separately scoped work.
+
+Do not turn a suggested implementation order into a claim that the unselected neural architecture is mandatory.
 
 ## 22. Final V1 design principle
 
@@ -803,685 +644,195 @@ The following choices do not reopen the V1 architecture:
 
 ## 23. Product V1 and BSc research profile
 
-The Product V1 scope in Section 3 remains the long-term first release. The BSc implementation is a deliberately smaller executable profile of that architecture.
+The reviewed behavior defines product intent. The final subset assessed in the BSc thesis is not frozen by this revision.
 
-The research profile exists to answer one technical question in sufficient depth:
+### 23.1 Agreed product requirements
 
-> How can a local file organizer trade automation coverage for a lower risk of incorrect filesystem actions by combining deterministic rules, semantic classification, confidence-based rejection, and human review?
+Static/dynamic organization, confident automatic creation, adaptive nested grouping, recognizable names, category-root fallback, temporary-folder exclusion, the one-minute grace, per-destination adoption, both setup interfaces, and noninteractive CLI integration are requirements of the reviewed product. They are not optional merely because an earlier draft placed them in a stretch list.
 
-The BSc profile is not a separate architecture. It uses the same core rules, filesystem boundaries, state model, and application operations as Product V1. Features omitted from the profile remain Product V1 work rather than deleted requirements.
+### 23.2 Thesis scope still to select
 
-### 23.1 Required BSc profile
+Select an achievable executable slice and describe its relationship to those product requirements. Decide the supported content types, model/training contribution, dataset, experiment roster, runtime budget, interaction coverage, and release gates explicitly.
 
-The required profile includes:
+No custom NN, frozen encoder, mandatory fine-tuning, fixed 300-500-item dataset, or required list of every model family is imposed. A comparative study or a task-adapted decision model remains possible.
 
-- Linux-only execution;
-- one configured watched directory;
-- a fixed set of categories and existing destination directories;
-- file-event deduplication and stability detection;
-- deterministic extension and metadata rules;
-- one lightweight local semantic classifier;
-- confidence-based acceptance or rejection;
-- manual review with the source file left in place;
-- safe synchronous moves with no implicit overwrite;
-- operation history and validated undo;
-- SQLite persistence for durable state;
-- startup recovery for interrupted file moves;
-- one thin interaction surface, initially the CLI;
-- an offline evaluation runner using the same classification application service;
-- automated unit, integration, recovery, and safety tests.
+### 23.3 Optional extensions
 
-### 23.2 Optional stretch profile
+Reviewable rename/merge suggestions and later per-destination mode overrides are optional. Neither becomes a thesis completion gate without a separate scope decision. Additional platforms, GUI, MCP, personalization, and advanced training techniques remain unselected later work.
 
-The following work is implemented only after every required acceptance criterion in Section 31 passes:
+### 23.4 Hosting
 
-- multiple watched directories;
-- interactive TUI;
-- configuration hot reload;
-- Linux origin metadata beyond filename and extension;
-- native notifications;
-- `systemd --user` installation;
-- self-contained packaging;
-- proposed new-folder classifications.
+Standalone runtime uses the daemon and REST. A research/embedded host may call shared application services directly. It must preserve the same policy and filesystem boundaries. Selecting a research host does not remove the required product CLI/TUI setup capabilities or imply they are implemented.
 
-### 23.3 Excluded from the BSc profile
+## 24. Candidate research questions
 
-The following Product V1 or post-V1 capabilities are outside the thesis implementation:
+These guide scope selection; they are not claims of proven improvement:
 
-- GUI, Windows, macOS, and mobile clients;
-- MCP integration;
-- remote or LAN APIs;
-- generative language models;
-- automatic summarization or metadata generation;
-- dynamically generated taxonomies;
-- semantic duplicate merging;
-- adaptive learning from user corrections;
-- automatic cleanup and deletion;
-- Lzy-Brain knowledge-base, task, calendar, and study modules.
+- Which local approach best places files into existing destinations under uncertainty?
+- How can dynamic grouping improve navigation without unnecessary folders or unstable hierarchy changes?
+- Does a learned action/group scorer improve over generic similarity and a manually designed grouping policy?
+- Can a lightweight Jev-style question-conditioned model make useful bounded organizational judgments?
+- What trade-offs arise among automatic precision, coverage, review, latency, memory, and model size?
+- Do grace, exclusion, adoption, collision, recovery, and optional approval boundaries hold under faults?
 
-### 23.4 Hosting profile
+The distinction between semantic similarity and filing preference matters. Related subjects may belong to different courses/projects, while differently worded documents may belong together. Hypotheses, measurable targets, and the selected comparison must be declared before final testing, without assuming the most complex model wins.
 
-The research implementation may run in either of these forms:
+## 25. Shared decision contract
 
-1. **Standalone Product V1 host:** `lzyflowd` owns state and the CLI calls the localhost API.
-2. **Research host:** a foreground executable embeds `LzyFlow.Application` directly and exposes the required CLI operations without REST.
+Exact DTOs remain open. Implementations must share normalized evidence, action semantics, and provenance so results can be compared and safely executed.
 
-The research host is allowed because it follows the embedded-mode boundary in Section 4.2. It must not duplicate business rules or bypass filesystem authorization. The choice of host does not affect classifier evaluation because both hosts call the same application service.
+### 25.1 Inputs
 
-REST authentication, service installation, and distribution must not block completion of the research profile.
+A decision context can contain filename/type, optional origin evidence, bounded extracted text, category/root identity, global mode, eligible files, active existing folders with their known parent relationships, and optional candidate groups/names. All evidence is normalized and scope-filtered before reaching a model.
 
----
+A group-level context additionally needs fixed candidate membership and current parent/hierarchy context. It must not expose unmanaged files or temporary downloads merely because they are physically nearby.
 
-## 24. Research questions and hypotheses
+### 25.2 Intent and outcomes
 
-### 24.1 Research questions
+The existing placement targets remain useful: `category_root`, `existing_folder`, and `new_folder`. A nested new-folder intent additionally identifies its known authorized parent. Reject/review is a policy outcome, not another arbitrary filesystem path.
 
-**RQ1 - Classification quality**
+Adaptive organization also needs to distinguish keeping the current broad placement, waiting for group evidence, creating a subgroup, and proposing optional rename/merge changes. Their final action/plan schema is not yet frozen.
 
-Does local semantic classification improve destination prediction over deterministic extension, filename, and metadata rules for a fixed directory taxonomy?
+Record model/version, preprocessing, input fingerprint, raw scores, calibrated/policy confidence where meaningful, and bounded reason codes. Include relevant candidate/group snapshots and policy identity in reproducibility records. Document text does not belong in normal logs or provenance fields.
 
-**RQ2 - Selective automation**
+### 25.3 Execution policy
 
-How does changing the automatic-acceptance threshold affect classification risk, automation coverage, and the number of files requiring review?
+1. Apply completion/grace, exclusion, management-scope, and root constraints.
+2. Select a suitable existing destination or confident category-root fallback.
+3. In dynamic mode, evaluate useful group/subgroup creation, recognizable naming, parent suitability, and fragmentation.
+4. Execute confident permitted placement/creation automatically.
+5. Store uncertain actionable decisions for review. Ordinary accumulation does not require inventing an uncertain action.
+6. Require explicit approval for every optional rename/merge suggestion.
+7. Revalidate the fixed action immediately before execution; a model cannot override authority.
 
-**RQ3 - Operational safety**
+Acceptance policy must be compatible with the actual score space and task. Placement and group creation need separately evaluated behavior, but no specific new threshold/profile switch is selected by this revision.
 
-Can the system preserve its filesystem safety invariants during filename collisions, unavailable destinations, duplicate watcher events, interrupted moves, and process restarts?
+### 25.4 Evidence extraction and file types
 
-### 24.2 Testable hypotheses
+Extraction needs declared type support, size/text limits, encoding handling, timeout, and failure behavior. Text-containing documents are the primary semantic use case. Specific PDF/office/OCR or visual-content support is not selected merely by listing Documents/Pictures/Videos categories.
 
-**H1**
+Where safe deterministic category routing is possible it can continue without content extraction. Otherwise unavailable/failed extraction contributes uncertainty and review. No classifier executes document macros or receives arbitrary filesystem mutation access.
 
-The hybrid classifier achieves a higher macro-averaged F1 score than the deterministic rule baseline on the held-out test set.
+### 25.5 Candidate implementations
 
-**H2**
+Rules, classical models, embeddings/prototypes, clustering, compact scorers, fine-tuned encoders, and local Jev-style decision models are candidates described in [AI Research Plan](ai-research.md). Existing baseline keys may be retained for continuity, but this revision does not mandate all variants or a neural default. Candidate count and folder hierarchy must not be confused with a fixed model output-label set.
 
-Rejecting low-confidence predictions reduces the error rate among automatically accepted decisions, at the cost of lower automation coverage.
+## 26. Calibration and action-policy selection
 
-**H3**
+Earlier `0.75` and `0.80` values are provisional examples, not probabilities of correctness or evidence that an action is safe. Evaluate the selected model, score normalization, margin handling, and task distribution.
 
-The safety and recovery test suite produces zero implicit overwrites, zero unauthorized writes, and zero automatic deletions in ambiguous recovery states.
+If models are trained, keep related documents/versions together when splitting training, development, calibration, and held-out test data. Generate pairs/triplets, prototypes, synthetic examples, and teacher labels only from permitted partitions. Pair expansion does not create independent documents.
 
-### 24.3 Interpretation boundary
+For an untrained model, still separate development/policy selection from final evaluation. Tune acceptance and limits only on the allowed development/calibration data; freeze them before testing. Group/topic-held-out evaluation is needed if claiming unseen-topic generalization.
 
-Embedding similarity is deterministic for a fixed runtime, model, input, and preprocessing pipeline. It is not proof that a semantic decision is correct.
+Evaluate existing placement, creation, subdivision, and uncertainty separately. Include ambiguous and insufficient-evidence cases; a softmax over candidates is not a none-fits detector. A technically valid action is not necessarily a useful organizational action.
 
-The design must not describe a cosine-similarity score as a probability or as a percentage of correctness. A score becomes a usable confidence value only after calibration and validation on representative data.
-
-The thesis evaluates the implemented models and dataset. It does not claim universal classification performance for arbitrary users, languages, file types, or taxonomies.
-
----
-
-## 25. Classification and decision contract
-
-Section 11 defines the Product V1 classification shape. The research profile extends it with provenance and an explicit decision policy.
-
-### 25.1 Input contract
+For threshold t:
 
 ```text
-ClassificationContext
-    FileName
-    Extension
-    SourceUrl?                optional
-    ReferrerUrl?              optional
-    BoundedExtractedText?     optional
-    CategoryKey
-    CandidateDirectories[]
-    PreprocessingVersion
-```
-
-The classifier receives only normalized data. It has no filesystem mutation capability.
-
-`CandidateDirectories` contains stable directory IDs, display names, and optional descriptions. Every candidate must be active and located beneath the deterministic destination root selected by configuration.
-
-### 25.2 Output contract
-
-```text
-ClassificationPrediction
-    Target                    category_root | existing_folder | new_folder
-    CandidateDirectoryId?     required for existing_folder
-    ProposedFolderName?       required for new_folder
-    RawScore
-    CalibratedConfidence?     absent when no calibrator exists
-    RunnerUpRawScore?
-    ClassifierKey
-    ClassifierVersion
-    PreprocessingVersion
-    InputFingerprint
-    ReasonCodes[]
-```
-
-`RawScore` is the native output used to rank candidates. It is not necessarily a probability.
-
-`CalibratedConfidence`, when available, estimates the likelihood that the selected prediction is correct under the calibration distribution. The calibration method and dataset version are part of `ClassifierVersion`.
-
-`InputFingerprint` is a cryptographic digest of the normalized classifier input used to detect accidental experiment drift. It must not contain source document text and must not be presented as anonymization, because equal or low-entropy inputs may still be inferable.
-
-`ReasonCodes` are bounded machine-readable values such as:
-
-```text
-extension_rule
-source_domain_rule
-filename_token_match
-semantic_top_candidate
-below_acceptance_threshold
-insufficient_candidate_margin
-semantic_classifier_unavailable
-unsupported_content_type
-content_extraction_failed
-```
-
-Reason codes support diagnostics and evaluation. They are not natural-language explanations generated by a model.
-
-### 25.3 Decision policy
-
-The decision policy is owned by the application layer, not by a classifier implementation.
-
-The BSc profile applies this order:
-
-1. A matching deterministic rule establishes the category and destination root.
-2. If `classify = false`, the policy selects the category root after normal safety validation.
-3. If `classify = true`, the lightweight semantic classifier ranks only active candidates beneath that root.
-4. An existing-directory prediction may be accepted only when:
-   - the calibrated confidence or approved raw threshold is met;
-   - the difference between the best and second-best candidates meets the configured minimum margin;
-   - the target still exists and remains authorized;
-   - the destination filename is available.
-5. Otherwise, the prediction becomes `needs_review` and the source remains untouched.
-6. New-folder proposals always require review in the BSc profile.
-7. If the semantic classifier is unavailable, only an already-complete deterministic decision may move automatically.
-
-The policy must record the exact fixed prediction presented for review. Approval does not rerun classification.
-
-### 25.4 Bounded content extraction
-
-Content extraction is optional evidence and must remain bounded.
-
-For each supported type, configuration or constants define:
-
-- maximum input file size;
-- maximum extracted character or token count;
-- extraction timeout;
-- supported encodings;
-- extractor key and version;
-- behavior for encrypted, malformed, or unsupported files.
-
-The required research profile supports plain text and Markdown. PDF extraction is optional. OCR, archive recursion, office-document macros, and executable inspection are excluded.
-
-Extraction failure never prevents deterministic routing. It adds a reason code and causes semantic-required work to fall back to review.
-
-### 25.5 Classifier variants
-
-The evaluation compares these variants through the same interface:
-
-| Key | Variant | Evidence | Purpose |
-| --- | --- | --- | --- |
-| `b0_root` | Category-root baseline | Extension only | Lower reference point |
-| `b1_rules` | Deterministic rules | Extension, filename, optional origin | Non-semantic product baseline |
-| `b2_semantic` | Semantic classifier | Local document and candidate embeddings | Isolate semantic contribution |
-| `b3_hybrid` | Hybrid selective classifier | Rules, embeddings, threshold, margin | Proposed operating policy |
-
-Model selection is an implementation decision, but every evaluated model must:
-
-- run locally after installation;
-- have a recorded model identifier and immutable version;
-- have a license compatible with the intended project distribution;
-- fit within the declared resource budget;
-- produce repeatable embeddings for fixed inputs within the supported runtime;
-- be evaluated before becoming the default.
-
----
-
-## 26. Confidence calibration and threshold selection
-
-The fixed `0.75` and `0.80` values in Section 11 are configuration defaults, not evidence that a prediction is correct.
-
-### 26.1 Data split
-
-The dataset is divided before threshold selection:
-
-```text
-development data
-    -> implementation and qualitative inspection
-
-calibration data
-    -> threshold, margin, and optional score calibration
-
-held-out test data
-    -> final reported results only
-```
-
-Near-duplicate files, renamed copies, and document versions must remain in the same split to reduce leakage.
-
-### 26.2 Calibration procedure
-
-The initial BSc implementation may use empirical threshold calibration without training a separate model:
-
-1. Run the frozen classifier on the calibration split.
-2. Sort predictions by raw score.
-3. Measure selective risk and coverage at each candidate threshold.
-4. Select the lowest threshold that satisfies the predeclared maximum accepted risk or minimum automatic precision.
-5. Select a minimum top-one versus top-two margin using the same calibration split.
-6. Freeze the policy before evaluating the test split.
-
-If the calibration dataset is sufficiently large, a monotonic calibration method may be compared. The uncalibrated and calibrated results must both be reported. A calibration method must never be fitted on the final test set.
-
-### 26.3 Risk-coverage definitions
-
-For a threshold `t`:
-
-```text
-accepted(t) = predictions whose score and margin satisfy policy at t
-
-coverage(t) = |accepted(t)| / |all predictions|
-
-selective_risk(t) = incorrect accepted predictions / |accepted(t)|
-
+coverage(t) = accepted decisions / all eligible decisions
+selective_risk(t) = incorrect accepted decisions / accepted decisions
 automatic_precision(t) = 1 - selective_risk(t)
 ```
 
-An empty accepted set has undefined selective risk and must not be reported as perfect performance.
+An empty accepted set has undefined risk. Define action-specific correctness and denominators, especially for multi-file plans. Review assistance does not count as autonomous success. Optional rename/merge approval remains mandatory regardless of confidence.
 
-The primary result is the risk-coverage curve rather than a single uncontextualized accuracy value.
+## 27. Dataset and reproducible evaluation
 
-### 26.4 Configuration update
+### 27.1 Dataset and labels
 
-The classification configuration should distinguish score, confidence, and margin:
+Dataset size, language distribution, content types, and final taxonomy are not selected. Use legally available public/synthetic or appropriately permitted content; do not commit private source documents.
 
-```toml
-[classification]
-lightweight_threshold = 0.75
-semantic_threshold = 0.80
-minimum_candidate_margin = 0.05
-threshold_profile = "default-v1"
-```
+Labels may need more than one correct destination: useful groups, acceptable recognizable names, valid parent choices, appropriate broad-root retention, creation/subdivision opportunities, and review cases. A learned group utility model needs organizational judgments beyond file-to-folder labels.
 
-The exact numeric values remain provisional until calibration. A configuration file generated from an experiment must record the associated dataset, classifier, preprocessing, and threshold-profile versions in the evaluation report.
+Version item/group IDs, source relationships, snapshots, splits, sequence order, and annotation policy. Define ambiguity and acceptable aliases. Evaluator gold information must not leak into model context or proposal generation.
 
----
+### 27.2 Static and sequential scenarios
 
-## 27. Evaluation dataset and offline runner
+Compare existing-destination routing, absent destinations, broad-root accumulation, and growth from coarse groups into useful nested subgroups. Include same-subject/different-course cases and folder-fragmentation failures.
 
-### 27.1 Dataset purpose
+Replay only current and permitted past evidence. Give each run the same initial directory state. New groups become later destinations; errors may affect future decisions. Report closed-loop runs separately from oracle-corrected or reviewer-assisted runs.
 
-The evaluation dataset measures destination prediction. It does not need to reproduce a user's entire personal Downloads directory.
+Model-only comparisons can hold candidate groups/names fixed. Full-pipeline comparisons include group generation, naming, timing, and acceptance. Unsupported cases remain visible rather than silently disappearing from a model's denominator.
 
-The target BSc dataset contains:
+### 27.3 Runner and filesystem tests
 
-- approximately 300 to 500 items;
-- 5 to 8 documented destination categories;
-- a mixture of easy, ambiguous, and out-of-scope items;
-- enough examples per category to report category-level errors;
-- only public, synthetic, or explicitly anonymized content.
+A non-mutating runner uses the same decision/application policies with a simulated directory registry. A separate disposable filesystem harness tests actual grace/exclusion, creation, regrouping, adoption, review, and recovery. Neither uses real personal directories or production state.
 
-The final size and category distribution are frozen before the final experiment.
+Exact commands, schemas, and selected scenarios remain to be implemented; example commands in earlier drafts are not executable feature claims.
 
-### 27.2 Gold-label manifest
+### 27.4 Suggested report contents
 
-The repository may contain metadata and scripts, but it must not contain private source documents.
+For the selected experiment, report placement quality, automatic precision/coverage/risk, review rate, useful/missed/unnecessary creation, fragmentation, name/parent acceptability, later reuse, and hierarchy stability. Include cold/warm latency, extraction/grouping costs, peak memory, total deployed model size, and training cost where applicable.
 
-```json
-{
-  "item_id": "doc-0001",
-  "relative_path": "documents/doc-0001.txt",
-  "gold_category": "university",
-  "gold_destination": "course-materials",
-  "language": "hu",
-  "content_type": "text/plain",
-  "ambiguous": false,
-  "split": "test"
-}
-```
-
-The manifest schema and category definitions are versioned. If source files cannot be redistributed, the manifest stores only identifiers and checksums, and the reproduction guide explains how an authorized evaluator reconstructs the corpus.
-
-Ambiguous examples remain in the dataset but are marked. Results are reported both with and without them.
-
-### 27.3 Labeling protocol
-
-Before labeling begins, every category must have:
-
-- a stable key;
-- a short natural-language definition;
-- positive examples;
-- explicit boundary cases;
-- rules for ties and genuinely ambiguous items.
-
-A second person should independently label a small stratified subset when practical. Disagreements are documented rather than silently overwritten. The goal is to detect unclear category definitions, not to claim a large-scale annotation study.
-
-### 27.4 Offline evaluation runner
-
-The evaluation runner is a non-mutating adapter over the same classification application service used by the product.
-
-```text
-manifest + read-only corpus
-    -> bounded preprocessing
-    -> classifier variant
-    -> decision policy
-    -> prediction record
-    -> metrics and error report
-```
-
-The runner must not:
-
-- start filesystem watchers;
-- move, rename, create, or delete corpus files;
-- write to the Product V1 state database;
-- use a separate implementation of classification rules.
-
-Suggested command shape:
-
-```text
-lzyflow evaluate \
-    --manifest ./evaluation/corpus-v1.jsonl \
-    --classifier b3_hybrid \
-    --config ./evaluation/config-v1.toml \
-    --output ./evaluation/results/run-id/
-```
-
-Each run writes:
-
-```text
-run.json                  environment and version metadata
-predictions.jsonl         one immutable record per item
-metrics.json              machine-readable aggregate results
-confusion-matrix.csv      category-level confusion matrix
-errors.csv                false positives, false negatives, and rejected items
-report.md                 human-readable summary
-```
-
-### 27.5 Metrics
-
-The evaluation reports at least:
-
-- accuracy;
-- macro-averaged precision, recall, and F1;
-- per-category precision, recall, and F1;
-- confusion matrix;
-- automatic precision;
-- coverage;
-- selective risk;
-- review rate;
-- risk-coverage curve;
-- median and 95th-percentile classification latency;
-- peak resident memory during the run;
-- model size on disk.
-
-The primary metrics are automatic precision and coverage for the hybrid selective classifier. Macro-F1 is used to compare classification quality independently of the reject policy.
-
-### 27.6 Error analysis
-
-Errors are assigned to one primary category:
-
-```text
-taxonomy ambiguity
-insufficient filename evidence
-content extraction failure
-embedding semantic mismatch
-closely competing destinations
-threshold calibration error
-language mismatch
-unsupported file type
-incorrect gold label
-implementation defect
-```
-
-The final report includes representative examples from every material error category, with private content removed.
-
----
+Define denominators, action versus per-file metrics, undefined cases, uncertainty intervals where appropriate, and error categories. The final thesis metric roster and numeric targets remain a scope decision; no unmeasured performance promise is made.
 
 ## 28. Safety invariants and verification
 
-The existing safety model is converted into explicit invariants that must hold in unit and integration tests.
+The implementation must preserve:
 
-### 28.1 Filesystem invariants
+1. No implicit overwrite during placement, grouping, approval, resolution, or undo.
+2. Canonical managed-root confinement, including nested parents and symlink indirection.
+3. No autonomous mutation for an uncertain or unauthorized action.
+4. No organization of files in `Downloads/to-be-deleted` and no automatic deletion there.
+5. No automatic organization before completion plus the 60-second grace.
+6. No adoption of pre-existing files without that destination's user choice.
+7. No classifier-proposed creation in static mode.
+8. No autonomous existing-folder rename/merge, including high-confidence suggestions.
+9. Fixed review approval with fresh execution-time eligibility checks.
+10. Idempotent event handling and serialized ownership of each file/action.
+11. Database failure disables autonomous mutation.
+12. Ambiguous recovery preserves data; multi-file plans expose partial completion.
+13. Cleanup requires explicit policy and placement provenance; adoption is not deletion provenance.
 
-**S1 - No implicit overwrite**
+Fault scenarios include collisions, vanished mounts, nested symlink escape, repeated watcher events, changes after classification, temporary relocation during grace or pending work, mode/adoption changes, concurrent creation, interrupted grace/creation/group moves, database failure, undo conflicts, and optional unapproved restructure suggestions.
 
-LzyFlow never replaces an existing destination entry during move, approval, resolution, or undo.
+Tests assert filesystem and durable state together. Precise group-plan and grace recovery schemas must be designed rather than inferred from passing file-move tests.
 
-**S2 - Managed-root confinement**
+## 29. Reproducibility and provenance
 
-Every mutation uses canonical filesystem paths and remains within active configured roots. Lexical prefix checks alone are insufficient.
+Record source commit and dirty state, runtime/hardware, model/preprocessing/extractor identities, policy/configuration checksum, corpus/split checksums, candidate/group snapshots, initial hierarchy, replay order, randomness, warm-up, repetitions, Docker image/dependency versions, and resource limits. Record teacher/training provenance only when used.
 
-**S3 - Uncertainty causes no mutation**
+Production history needs enough immutable action context to explain placement and regrouping, including the selected nested parent, management authority, model/policy version, and affected files. The baseline schema audit must address this explicitly. Fingerprints detect drift; they do not anonymize private content.
 
-A low-confidence, low-margin, invalid, or unavailable classification leaves the source file untouched.
+Normal logs must not contain bearer tokens, document text, model prompts, private URL queries, or unrelated filesystem data. Debug path logging is opt-in. Optional restructuring previews intentionally show affected paths to the authorized user; that is separate from indiscriminate logging.
 
-**S4 - New child confinement**
+## 30. Test strategy and development gates
 
-When creating a child path, LzyFlow authorizes the canonical existing parent and appends exactly one validated path segment.
+Core tests cover domain/action rules, mode and approval boundaries, naming validation, and metrics. Application tests cover setup choices, noninteractive operation, grace/exclusion, adoption, decisions, grouping plans, fixed review, and degraded models. Infrastructure tests use isolated filesystem/SQLite state for real-path authorization, moves, directory identity, and recovery.
 
-**S5 - Ambiguous recovery is non-destructive**
+Evaluation tests check schema/metric determinism, missing provenance, split leakage, replay order, state reset, future-information exclusion, and reviewer accounting. No selected model accuracy is implied by architecture-boundary tests.
 
-If both expected source and destination exist after an interrupted operation, LzyFlow deletes neither and requires review.
+The established repository baseline is restore, format verification, Release build, and tests. Slow model experiments and Docker filesystem scenarios run separately from fast checks as needed. See [Development](development.md).
 
-**S6 - Database failure disables autonomous mutation**
+Performance comparisons separate cold start, warm inference, extraction, group/naming work, and total latency. Control resources and inputs, retain raw measurements, and record relevant cache state. Exact acceptance targets and the final thesis test roster remain to be selected.
 
-If durable state cannot be read or written safely, automatic filesystem operations stop.
+## 31. Completion and unresolved scope
 
-**S7 - Undo is a new validated operation**
+### 31.1 Product behavior checklist
 
-Undo receives the same path, existence, authorization, and collision validation as a forward move.
+- [ ] Stable/completed downloads receive one minute before organization.
+- [ ] Moving into `Downloads/to-be-deleted` prevents pending organization; deletion stays manual.
+- [ ] Confident existing-folder/category-root placement works; uncertainty goes to review.
+- [ ] Dynamic mode creates useful recognizable nested groups and can regroup eligible files later.
+- [ ] Static mode creates no classifier-proposed folders.
+- [ ] The selected grouping policy avoids unnecessary fragmentation without a universal count gate.
+- [ ] Setup obtains mode and separate per-destination adoption choices through TUI and CLI.
+- [ ] CLI setup and operation can run fully noninteractively.
+- [ ] History, safe moves, review, undo, and recovery preserve the stated invariants.
+- [ ] New durable behavior is represented by reviewed contracts and migrations.
 
-**S8 - Review approval is stable**
+### 31.2 Optional extensions
 
-Approval executes the stored decision. It does not silently rerun classification or change destination.
+If implemented, rename/merge suggestions show affected files and require approval. Per-destination mode overrides remain a later toggleable feature. Neither is a mandatory thesis gate by default.
 
-**S9 - Event handling is idempotent**
+### 31.3 Thesis completion still to define
 
-Repeated filesystem notifications for the same stable file do not create concurrent logical ingestion flows.
+Before claiming thesis completion, select and document its assessed product slice, AI contribution, dataset/splits, experiment roster, metrics/targets, resource budget, and reproduction procedure. Do not substitute the earlier unapproved mandatory neural architecture or model catalogue.
 
-**S10 - No cleanup without provenance**
+### 31.4 Documentation integrity
 
-Cleanup may affect only files that durable history proves were placed by LzyFlow under an enabled cleanup policy.
-
-### 28.2 Required fault scenarios
-
-The integration suite uses isolated temporary directories and covers:
-
-| Scenario | Expected result |
-| --- | --- |
-| Destination filename already exists | `needs_review`; source unchanged |
-| Destination root disappears before move | operation refused; root not recreated |
-| Symlink resolves outside managed root | authorization failure |
-| Duplicate watcher events | one logical file record and one classification flow |
-| Source changes after classification | stored decision invalidated or reviewed before mutation |
-| Process stops before filesystem move | recovery restores a pre-move processing state |
-| Process stops after move but before state commit | recovery repairs durable state from filesystem reality |
-| Both source and destination exist | `needs_review`; neither deleted |
-| Neither source nor destination exists | operation marked failed and surfaced |
-| SQLite becomes unavailable | daemon degraded; automatic mutation disabled |
-| Undo destination is occupied | undo refused without overwrite |
-
-The tests must assert both database state and filesystem state after every scenario.
-
-### 28.3 Concurrency rule
-
-Filesystem events may be observed concurrently, but a single logical file cannot execute two state transitions or mutations concurrently.
-
-The implementation must define one ownership mechanism, such as:
-
-- a bounded channel with one mutation consumer;
-- per-file keyed locking around application operations;
-- an equivalent serialized application command queue.
-
-The chosen mechanism must be covered by a burst test that emits repeated create and change events for the same files.
-
----
-
-## 29. Reproducibility and decision provenance
-
-### 29.1 Reproducible run metadata
-
-Every evaluation run records:
-
-- source commit SHA;
-- dirty-worktree flag;
-- operating system and architecture;Oh come on, no one will look at t
-- .NET runtime version;
-- classifier key and immutable version;
-- model file checksum;
-- preprocessing and extractor versions;
-- dataset manifest checksum;
-- configuration checksum;
-- threshold profile;
-- random seed when applicable;
-- start and finish timestamps;
-- warm-up policy and number of measured repetitions.
-
-### 29.2 Production classification provenance
-
-To support debugging and later comparison, the existing `classifications` table should add:
-
-```dbml
-classifier_key text
-classifier_version text
-preprocessing_version text
-input_fingerprint text
-raw_score real
-runner_up_raw_score real
-reason_codes text
-created_at datetime
-```
-
-`confidence` remains the calibrated or policy-consumed confidence field already present in the schema.
-
-`reason_codes` stores a bounded serialized list. It must not contain extracted user text.
-
-This change does not add a sixth Product V1 table. It extends the existing classification history with the minimum provenance needed to explain why two runs may differ.
-
-The first migration is not frozen until these fields and their privacy implications are reviewed.
-
-### 29.3 Logging boundary
-
-Normal logs may include:
-
-- stable IDs;
-- lifecycle transitions;
-- reason codes;
-- classifier and preprocessing versions;
-- elapsed time;
-- normalized error categories.
-
-Normal logs must not include:
-
-- bearer tokens;
-- document contents;
-- extracted text;
-- full private URLs with sensitive query parameters;
-- model prompts;
-- raw filesystem data unrelated to a managed operation.
-
-Debug logging that includes paths is opt-in and documented.
-
----
-
-## 30. Test strategy and quality gates
-
-### 30.1 Test layers
-
-**Core unit tests**
-
-- lifecycle transition validation;
-- destination policy;
-- threshold and margin policy;
-- category and candidate constraints;
-- new-folder label validation;
-- collision and undo rules;
-- metric calculations.
-
-**Application tests**
-
-- deterministic and semantic classification orchestration;
-- fixed review decisions;
-- degraded classifier behavior;
-- configuration validation;
-- state and history updates.
-
-**Infrastructure integration tests**
-
-- SQLite migrations and foreign keys;
-- canonical-path authorization;
-- temporary-directory file moves;
-- stability detection;
-- watcher-event deduplication;
-- restart and crash-recovery scenarios.
-
-**Evaluation regression tests**
-
-- fixed small public fixture corpus;
-- expected prediction record schema;
-- deterministic metric computation;
-- failure when model, manifest, or configuration metadata is missing;
-- comparison report generation.
-
-### 30.2 Continuous integration gates
-
-Every merge to the main branch should require:
-
-```text
-dotnet format --verify-no-changes
-dotnet build
-dotnet test
-```
-
-The exact coverage target is set after the first vertical slice. Coverage is a diagnostic rather than a substitute for invariant and fault-scenario tests.
-
-Slow model benchmarks and distribution tests may run separately from the fast pull-request suite, but their latest successful results must be recorded before a tagged thesis release.
-
-### 30.3 Benchmark validity
-
-Performance measurements must:
-
-- separate cold-start and warm inference;
-- exclude model download time;
-- run multiple repetitions;
-- report machine hardware and power mode;
-- avoid comparing different preprocessing inputs as if they were the same classifier workload;
-- retain raw measurements alongside aggregates.
-
-No fixed latency promise is part of the design until measurements exist.
-
----
-
-## 31. Definition of done for the BSc profile
-
-The research profile is complete only when all required items below are true.
-
-### 31.1 Functional completion
-
-- [ ] A stable file can traverse detection, classification, review or approval, move, history, and undo.
-- [ ] Low-confidence or low-margin predictions leave the source untouched.
-- [ ] Approval executes a fixed stored decision.
-- [ ] Restart recovery handles every filesystem reality in Section 15.1.
-- [ ] The required CLI operations are documented and usable.
-
-### 31.2 Safety completion
-
-- [ ] Every invariant in Section 28.1 has at least one automated test.
-- [ ] Every fault scenario in Section 28.2 has an integration test.
-- [ ] No test produces an implicit overwrite, unauthorized write, or automatic ambiguous-state deletion.
-- [ ] Database unavailability disables autonomous mutation.
-
-### 31.3 Research completion
-
-- [ ] Dataset and category definitions are versioned.
-- [ ] Development, calibration, and test splits are frozen before final evaluation.
-- [ ] All four classifier variants run through the same evaluation interface.
-- [ ] Threshold and margin are selected only from calibration data.
-- [ ] Final test results include macro-F1, automatic precision, coverage, selective risk, and a confusion matrix.
-- [ ] The report contains a categorized error analysis.
-- [ ] Runtime, memory, model size, and environment metadata are reported.
-- [ ] Another checkout can reproduce the metric files using documented commands and legally available inputs.
-
-### 31.4 Documentation completion
-
-- [ ] `README.md` distinguishes Product V1 from the BSc research profile.
-- [ ] Configuration examples match the implemented profile.
-- [ ] Safety and privacy limitations are documented.
-- [ ] Model and dataset licenses are recorded.
-- [ ] Deferred features are not presented as implemented.
+Examples must match each other and distinguish proposed syntax from implementation. Retain open choices rather than silently choosing defaults. Describe actual implemented support at release time; this specification alone is not evidence of runtime completion.
 
 ## 32. References
 

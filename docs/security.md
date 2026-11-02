@@ -1,273 +1,127 @@
 # Security
 
-LzyFlow is a local file-management service with authority to move user files. V1 therefore follows a conservative security model:
+LzyFlow runs as the current Linux user and can move files inside configured management boundaries. The reviewed Product V1 principle is:
 
-> If LzyFlow cannot establish that an operation is authorized and safe, it does not perform the filesystem mutation.
+> If an action is uncertain, unauthorized, or cannot be validated safely, leave the affected file unchanged and surface the decision for review or failure.
 
-## Execution Model
+This document describes required behavior, not evidence that all safeguards are implemented.
 
-LzyFlow V1 runs as the current Linux user.
+## Runtime and API
 
-- No root privileges are required for normal operation.
-- `lzyflowd` runs as a `systemd --user` service.
-- Filesystem access is limited by both the operating-system permissions of that user and LzyFlow's own managed-root rules.
+Normal operation needs no root privileges. The standalone daemon owns runtime state, SQLite, configuration, and filesystem mutations. CLI/TUI use shared application operations; embedded hosts inherit the same boundaries.
 
-Running as the user does **not** mean every path accessible to that user is authorized for LzyFlow.
-
-## Local API
-
-The V1 REST API listens only on:
-
-```text
-127.0.0.1
-```
-
-The default endpoint is:
-
-```text
-http://127.0.0.1:5274/api/v1
-```
-
-Binding to `0.0.0.0`, LAN interfaces, or externally reachable addresses is outside V1.
-
-Remote authentication, TLS termination, and remote administration are therefore intentionally out of scope.
-
-## Authentication
-
-A per-user bearer token is stored at:
-
-```text
-~/.local/share/lzyflow/api.token
-```
-
-The token should use restrictive permissions such as:
-
-```text
-0600
-```
-
-Clients authenticate with:
+The REST API binds only to `127.0.0.1`, normally port `5274`. Remote/LAN access is outside V1. A user-scoped token at the XDG data location, normally `~/.local/share/lzyflow/api.token`, uses restrictive permissions such as `0600`. Clients send:
 
 ```http
 Authorization: Bearer <token>
 ```
 
-CLI and TUI clients use the same local API boundary as other standalone clients.
+Authentication answers who may control LzyFlow. It does not authorize arbitrary filesystem access. The fully noninteractive CLI must not bypass the checks used by TUI/REST actions.
 
-Authentication answers:
+## Roots and management scope
 
-```text
-Who may control LzyFlow?
-```
+Every source and destination must belong to the configured roots valid for the operation. Destination configuration and existing-file adoption are separate choices.
 
-It does **not** grant unrestricted filesystem authority.
+Initial setup asks whether pre-existing contents may be managed **separately for each destination**. Until that choice is obtained, do not silently reorganize existing contents. Within an excluded destination, files placed by LzyFlow or explicitly included can still be eligible under the selected policy; unrelated pre-existing files cannot join a grouping plan merely because they are nearby.
 
-## Filesystem Authorization
+A choice to include existing files authorizes organization within that scope. It does not grant automatic deletion, arbitrary root changes, or autonomous folder renaming/merging. Fine-grained exclusions and later adoption changes remain to be designed.
 
-Filesystem authorization answers:
+## Completion, grace, and temporary downloads
 
-```text
-What may LzyFlow modify?
-```
+Downloads must finish and receive **60 seconds** before automatic organization. Initial detection is not completion. Stability/completion evidence and grace expiry are independent requirements; resumed writing invalidates readiness.
 
-Every source and destination must remain within the configured watched roots and destination roots that are valid for the requested operation.
-
-Configuration establishes those boundaries. A successful bearer-token check does not override them.
-
-The same rule applies to:
-
-- REST requests;
-- CLI operations;
-- TUI operations;
-- internal automation;
-- any future MCP adapter.
-
-## Canonical Path Validation
-
-Authorization must use the real filesystem target, not only the path string provided by a caller.
-
-A lexical prefix check is insufficient.
-
-For example, a path that appears to be inside a managed root must not be allowed to escape through a symlink.
-
-Conceptually:
+The user can move a file into:
 
 ```text
-~/Documents/Managed/link -> ~/.ssh
+<XDG Downloads>/to-be-deleted
 ```
 
-must not give LzyFlow permission to write into `~/.ssh`.
+This subtree is excluded from organization, including recursive observation, content-based grouping, pending moves, and cleanup. Its name is not permission to delete files automatically. The user controls deletion.
 
-For an existing path, LzyFlow resolves the canonical or real path before authorization.
+Recheck current location and eligibility immediately before mutation. A previously queued action must not follow a manually relocated file into this folder or re-ingest it there. Exact watcher cancellation, file identity, restart timing, and behavior when files move back out require implementation design.
 
-For a new child path, LzyFlow:
+No blanket notification approval or per-file temporary flag UI is required: relocation during grace is the agreed interaction.
 
-1. resolves the existing parent directory;
-2. verifies that the resolved parent is inside the permitted managed root;
-3. validates the new child as a single safe path segment;
-4. only then creates or uses that child path.
+## Canonical path validation and nesting
 
-If real-path resolution is ambiguous or cannot be established safely, the operation is rejected.
+Lexical prefix checks are insufficient. Resolve real paths and prevent symlink/path-indirection escape from an authorized root.
 
-## Classifier Isolation
+For a new child:
 
-Classifiers return semantic placement intent, never arbitrary filesystem paths.
+1. Identify the existing parent through known directory identity.
+2. Resolve and authorize its real path beneath the selected destination root.
+3. Validate the new folder label as a single path segment.
+4. Recheck identity, conflicts, and relevant current policy before creation.
 
-Allowed result types are:
+The parent may be an existing nested folder. Single-segment validation applies to each child name; it does not restrict organization to direct children of the root. Whether one plan can create multiple missing parent levels is unresolved and must not be inferred as arbitrary path authority.
 
-```text
-category_root
-existing_folder
-new_folder
-```
+Reject empty labels, absolute paths, `.`/`..`, path separators, traversal attempts, and names unsafe for the intended filesystem operation. A model returns semantic intent and a parent reference, never an executable arbitrary path.
 
-An existing folder is referenced through a known directory identity.
+Canonical checks must be combined with execution-time checks appropriate to the supported platform. Do not claim an earlier string validation eliminates filesystem races. Reject operations when safe identity/containment cannot be established.
 
-A new-folder result contains only a proposed folder name. Deterministic application logic validates that name and constructs the resulting path beneath the configured destination root.
+## Models, names, and grouping
 
-Unsafe names are rejected, including:
+Models receive normalized, bounded evidence and eligible candidates. They have no direct mutation capability. Document contents are evidence, not instructions to change scope or policy.
 
-- absolute paths;
-- `.` or `..`;
-- path separators;
-- traversal attempts;
-- empty names;
-- names that cannot be safely created within the configured root.
+A name should preserve recognizable document/group information. A plausible label, high similarity, or schema-valid output does not prove that creating a folder is useful. Avoid overlapping destinations and unnecessary fragmentation; exact criteria and numeric limits remain open.
 
-## No Implicit Overwrite
+Static mode allows existing destinations only. Dynamic mode permits confident useful nested creation and regrouping. A mode change is rechecked before pending execution.
 
-LzyFlow never silently overwrites an existing user file.
+Group plans must have fixed eligible membership and explicit destinations. A model cannot expand the operation to unmanaged files, temporary downloads, or unrelated paths. Group proposal, acceptance, and execution are distinct responsibilities even if one model assists several of them.
 
-If the destination filename already exists:
+## Review and optional restructuring
 
-```text
-operation -> NeedsReview
-```
+Uncertain placement, creation, grouping, or naming requires review. A confidently appropriate broad-root placement can remain while further grouping evidence accumulates; lack of a subgroup alone does not force an unsafe action.
 
-The source remains untouched.
+Approval executes the fixed stored intent and revalidates current source state, mode, adoption scope, parent identity, authorization, and conflicts. It must not silently rerun classification or redirect a file to a different destination.
 
-V1 also does not automatically rename the incoming file to values such as:
+**Optional rename/merge suggestions always require explicit approval**, even when confident. Show the proposed changes and affected files. Fully autonomous renaming/merging is not part of the agreed behavior.
 
-```text
-file (1).pdf
-```
+Folder-level execution, identity, collision handling, and undo/reversal semantics must be designed before that optional feature ships. Merging folders must not silently imply deduplicating or deleting file contents. Removal of merged-away directories has not been separately specified.
 
-without an explicit user decision.
+## No implicit overwrite
 
-## Uncertainty and Failure
+Never overwrite an existing destination entry during placement, regrouping, approval, resolution, or undo. Filename conflicts require review; automatic numbered collision renaming is not part of the established V1 baseline.
 
-Low confidence is not permission to act.
+If a proposed directory appears before execution, revalidate its identity and the fixed intent rather than silently treating it as interchangeable. Serialize competing creation plans so related files do not race to create duplicate destinations.
 
-When classification is uncertain:
+## Missing roots and durable state
 
-```text
-source file remains in place
-status -> NeedsReview
-```
+If a destination root or mount disappears, do not blindly recreate it. Leave the source unchanged and surface the condition.
 
-A stalled download also remains untouched.
+If SQLite cannot reliably store/read required state, disable autonomous mutation. Initial setup while the daemon is stopped needs explicit bootstrap ownership so CLI/TUI cannot race another configuration writer.
 
-Missing origin metadata is treated as missing evidence rather than a reason to bypass safety checks.
+The expanded requirements need reviewed persistence for adoption provenance, completion/grace state, nested-parent intent, fixed group membership, and partial operations. The old file-only schema is not proof that those requirements are covered.
 
-If a stored classification target disappears before approval, LzyFlow does not silently choose another destination.
+## Failure, recovery, and undo
 
-## Database Failure
+A filesystem mutation and SQLite update cannot form one atomic transaction. Persist enough action intent to reconcile interrupted execution.
 
-SQLite stores persistent state required for:
-
-- file lifecycle state;
-- directory identity;
-- classification history;
-- operation history;
-- undo and recovery.
-
-If the database cannot be opened or is considered unusable:
-
-```text
-autonomous filesystem mutations are disabled
-```
-
-It is safer to stop organizing than to continue without reliable state and history.
-
-## Unavailable Destinations
-
-If a configured destination root or mount disappears, LzyFlow must not blindly recreate it.
-
-The source file remains untouched and the condition is surfaced for review or as a failure.
-
-This is especially important for removable, network, and mounted storage.
-
-## Crash Safety
-
-A filesystem move and a SQLite update cannot form one atomic transaction.
-
-LzyFlow therefore persists enough state to reconcile interrupted moves on startup.
-
-Recovery prefers preserving data over guessing:
-
-| Filesystem state | Recovery |
+| Observed source/destination state | Required behavior |
 | --- | --- |
-| Source missing, destination exists | Treat as likely successful and repair persistent state. |
-| Source exists, destination missing | Treat as not completed and restore processing state. |
-| Both exist | Mark for review and delete neither. |
-| Neither exists | Mark failed and surface the missing state. |
+| Source absent, destination present | Verify against operation evidence and reconcile likely success. |
+| Source present, destination absent | Reconcile incomplete work without premature retry. |
+| Both present | Require review; delete neither. |
+| Neither present | Surface failed/missing state. |
 
-## Cleanup Safety
+A group of moves may partially complete. Preserve member outcomes and expose partial completion; do not describe it as an atomic batch. If folder creation succeeds but a move fails, reconcile the created folder without automatically deleting potentially useful user data.
 
-Cleanup may delete only files that LzyFlow can identify through its own history as files it placed in the cleanup-managed destination.
+Undo is a fresh validated reverse move. It must not overwrite a conflict, escape roots, bypass temporary exclusion, or implicitly delete a newly created directory. Optional folder rename/merge reversal needs a separate design.
 
-LzyFlow must never blindly empty a directory.
+## Cleanup
 
-## MCP and Future Integrations
+The earlier V1 cleanup plan is limited to explicit policies and files durable placement history proves LzyFlow placed under those policies. Merely adopting pre-existing files is insufficient deletion provenance. Never blindly empty a destination.
 
-MCP is optional and deferred beyond the first usable V1.
+`Downloads/to-be-deleted` stays manually managed and excluded from automatic deletion, including through an enclosing watch's cleanup policy. The reviewed temporary-folder behavior does not authorize a scheduler or retention deadline.
 
-Any future adapter must call the same application services and inherit the same authorization, path-validation, overwrite, and review rules.
+## Privacy and research
 
-An agent should receive bounded LzyFlow capabilities, not unrestricted filesystem access.
+Normal logs and classification provenance must not contain bearer tokens, document text, prompts, sensitive URL query strings, or unrelated filesystem data. Debug path logging is opt-in. Authorized review previews may show affected paths as part of a specific proposed operation.
 
-## V1 Threat Model
+Local inference is the intended model deployment direction. No hosted Jev call, teacher labeling, or other external processing is authorized merely by listing it as a research alternative. Runtime evidence scope and research data permissions must remain explicit.
 
-V1 is designed to reduce risks from:
+## Verification and non-goals
 
-- accidental destructive file moves;
-- API calls from unauthenticated local clients;
-- path traversal;
-- symlink-based managed-root escape;
-- destination collisions;
-- unsafe classifier output;
-- stale classification targets;
-- missing destination mounts;
-- interrupted filesystem operations;
-- autonomous mutation while persistent state is unavailable.
+Test grace expiry, temporary relocation during queued work, adoption exclusions, nested symlink escape, collisions, mode changes, concurrent creation, partial grouping failure, interrupted moves, database failure, fixed review, undo, and unapproved optional restructuring.
 
-## Non-Goals
-
-V1 does not attempt to provide:
-
-- remote or internet-facing administration;
-- TLS for the local-only REST endpoint;
-- multi-user authorization;
-- privilege separation between multiple local users;
-- OS sandboxing;
-- container isolation;
-- malware detection;
-- content antivirus scanning;
-- protection against a fully compromised user account.
-
-Those concerns may require a different deployment model and are outside the current V1 scope.
-
-## Security Invariants
-
-The implementation should preserve these invariants:
-
-1. LzyFlow never requires root for normal operation.
-2. The V1 API remains localhost-only.
-3. API authentication and filesystem authorization remain separate checks.
-4. Every filesystem target is authorized using canonical/real paths.
-5. Symlinks cannot escape managed roots.
-6. Classifiers never choose arbitrary filesystem paths.
-7. Existing files are never overwritten implicitly.
-8. Uncertainty leaves the source file untouched.
-9. Database failure disables autonomous mutations.
-10. Missing or invalid destination roots do not trigger blind directory recreation.
+The design does not claim malware scanning, privilege separation against a compromised user account, OS sandboxing, or remote administration. Docker evaluation isolation does not replace product authorization.
