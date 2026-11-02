@@ -86,6 +86,6 @@ body:
       label: Definition of done
       options:
         - label: Tests are added or updated where appropriate.
-          required: true
+          required: false
         - label: Documentation is updated where the public or developer-facing contract changes.
-          required: true
+          required: false
