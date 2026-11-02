@@ -167,3 +167,51 @@ dotnet test tests/LzyFlow.IntegrationTests/LzyFlow.IntegrationTests.csproj
 ```
 
 Before opening a pull request, run the complete solution test suite.
+
+## Reviewed behavior and implementation status
+
+Technical-design Revision 8 records reviewed product requirements. TUI setup, noninteractive CLI setup/operation, adaptive grouping, adoption scope, grace, and temporary exclusion must not be presented as implemented solely because their documentation exists.
+
+The final assessed thesis subset, models, dataset size, and experiment roster remain open. Do not make every candidate method or a custom neural scorer a build/release requirement by reading the option catalogue as a checklist.
+
+## Behavior verification to add with implementation
+
+Use existing test layers and isolated fixtures to cover:
+
+- completion versus initial detection and the subsequent 60-second grace;
+- manual relocation into `Downloads/to-be-deleted` cancelling pending organization;
+- exclusion of that subtree from recursive observation, grouping, and automatic cleanup;
+- broad-root fallback and later regrouping of eligible files;
+- global static/dynamic selection, including no proposed creation in static mode;
+- independent per-destination adoption choices;
+- shared TUI/CLI setup semantics and noninteractive failure without prompts;
+- useful nested creation, fixed group plans, directory registration, and later reuse;
+- uncertain naming/placement/group actions requiring review;
+- partial multi-file execution, nested parent identity, crash recovery, and undo;
+- optional rename/merge suggestions requiring approval before execution.
+
+Tests must assert filesystem and durable state together. Exact grace recovery and group-plan persistence need design work; do not simulate them with implementation-mirroring assertions that miss real failures.
+
+## AI experiments and Docker comparison
+
+The model catalogue and proposed research protocols are in [AI Research Plan](ai-research.md). No trained model, Dockerfile, benchmark command, or training pipeline is implemented by this documentation change.
+
+Experimental implementations may use separate branches while sharing a stable decision contract and runner. Record exact source commits and image digests rather than branch names alone. Compatible variants may later coexist behind one interface.
+
+The selected Docker comparison should use:
+
+- a read-only permitted corpus and versioned splits/scenarios;
+- the same initial folder snapshots, adoption choices, and file arrival sequences;
+- controlled CPU, memory, thread, and any GPU limits;
+- explicit per-variant dependencies and model/checksum metadata;
+- network-disabled measured local inference once permitted assets are installed;
+- isolated state/cache/output paths and a declared reset/warm-up policy;
+- separate preprocessing, grouping/naming, cold-start, warm-inference, and total timings.
+
+For model-only comparisons, hold candidate groups/names constant. For full-pipeline comparisons, include their generation costs and errors. Clustering parameters are experiment configuration; they must not silently restore a universal product file-count gate.
+
+A non-mutating runner can simulate directory registration and regrouping. Test real creation, grace, exclusion, moves, approval, and recovery separately in disposable filesystem roots. Never mount the developer's real Downloads or production LzyFlow state.
+
+Only permitted training partitions supply learned prototypes, pairs, hard negatives, or teacher/synthetic training data. Split related documents before generating comparisons. Evaluation feedback becomes future context only after its prediction is logged, under an explicitly declared assisted/online protocol.
+
+Before publishing thesis results, retain raw predictions/timings, environment and action provenance, aggregate reports, and commands that reproduce the selected comparison. Docker controls do not remove hardware/power-mode variation. Numeric performance targets and the final metric roster remain to be selected.
